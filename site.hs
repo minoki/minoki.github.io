@@ -6,6 +6,16 @@ config = defaultConfiguration
   { destinationDirectory = "docs"
   }
 
+feedConfiguration :: FeedConfiguration
+feedConfiguration =
+  FeedConfiguration
+    { feedTitle = "Mizuki's Blog"
+    , feedDescription = "Posts about functional programming languages"
+    , feedAuthorName = "Arata Mizuki"
+    , feedAuthorEmail = "aratamizuki@miz-ar.info"
+    , feedRoot = "https://minoki.github.io"
+    }
+
 main :: IO ()
 main = do
   hakyllWith config $ do
@@ -26,6 +36,7 @@ main = do
     match "posts/*" $ do
       route $ setExtension "html"
       compile $ pandocCompiler
+        >>= saveSnapshot "content"
         >>= loadAndApplyTemplate "templates/post.html"    postCtx
         >>= loadAndApplyTemplate "templates/default.html" postCtx
         >>= relativizeUrls
@@ -44,6 +55,13 @@ main = do
           >>= loadAndApplyTemplate "templates/default.html" archiveCtx
           >>= relativizeUrls
 
+    create ["rss.xml"] $ do
+      route idRoute
+      compile $ do
+        let feedCtx = postCtx <> bodyField "description"
+        posts <- fmap (take 10) . recentFirst =<<
+          loadAllSnapshots "posts/*" "content"
+        renderRss feedConfiguration feedCtx posts
 
     match "index.html" $ do
       route idRoute
