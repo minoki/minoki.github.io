@@ -2,6 +2,8 @@
 title: About
 ---
 
+I'm Mizuki, a programmer living in Japan.
+
 GitHub account: [@minoki](https://github.com/minoki)
 
 gitlab.haskell.org: [@aratamizuki](https://gitlab.haskell.org/aratamizuki)
