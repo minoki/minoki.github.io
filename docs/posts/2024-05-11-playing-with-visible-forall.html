@@ -1,17 +1,34 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"
-    xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <channel>
-        <title>Mizuki's Blog</title>
-        <link>https://minoki.github.io</link>
-        <description><![CDATA[Posts about functional programming languages]]></description>
-        <atom:link href="https://minoki.github.io/rss.xml" rel="self"
-                   type="application/rss+xml" />
-        <lastBuildDate>Sat, 11 May 2024 00:00:00 UT</lastBuildDate>
-        <item>
-    <title>Playing with Visible Forall in GHC 9.10</title>
-    <link>https://minoki.github.io/posts/2024-05-11-playing-with-visible-forall.html</link>
-    <description><![CDATA[<p><em>Japanese version</em>: <a href="https://zenn.dev/mod_poppo/articles/playing-with-visible-forall">GHC 9.10で実装された可視なforallで遊ぶ</a></p>
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Playing with Visible Forall in GHC 9.10 - Mizuki's Blog</title>
+        <link rel="alternate" type="application/rss+xml" title="RSS Feed" href="../rss.xml" />
+        <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    </head>
+    <body>
+        <div id="header">
+            <div id="logo">
+                <a href="../">Mizuki's Blog</a>
+            </div>
+            <div id="navigation">
+                <a href="../">Home</a>
+                <a href="../about.html">About</a>
+                <a href="../contact.html">Contact</a>
+                <a href="../archive.html">Archive</a>
+            </div>
+        </div>
+
+        <div id="content">
+            <h1>Playing with Visible Forall in GHC 9.10</h1>
+
+            <div class="info">
+    Posted on May 11, 2024
+    
+</div>
+
+<p><em>Japanese version</em>: <a href="https://zenn.dev/mod_poppo/articles/playing-with-visible-forall">GHC 9.10で実装された可視なforallで遊ぶ</a></p>
 <p>Today, GHC 9.10.1 is released.
 One of the new features is “visible forall”, or <code>RequiredTypeArguments</code> extension.
 In this article, I will play with this new feature.</p>
@@ -25,7 +42,7 @@ In this article, I will play with this new feature.</p>
 The ordinary <code>id</code> function and the variant of <code>id</code> function with visible <code>forall</code> can each be written as follows:</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE RequiredTypeArguments #-}</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">-- From User&#39;s Guide:</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co">-- From User's Guide:</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- The ordinary id function</span></span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">id</span><span class="ot"> ::</span> <span class="kw">forall</span> a<span class="op">.</span> a <span class="ot">-&gt;</span> a</span>
@@ -45,7 +62,7 @@ it :: Int
 ghci&gt; id_vdq _ 42  -- Let GHC infer the type
 42
 it :: Num w =&gt; w
-ghci&gt; id_vdq Int 42  -- Supply the type explicitly (note that there&#39;s no `@`!)
+ghci&gt; id_vdq Int 42  -- Supply the type explicitly (note that there's no `@`!)
 42
 it :: Int</code></pre>
 <p>So, by declaraing a function with <code>forall -&gt;</code>, you can pass the type without using <code>@</code>.</p>
@@ -75,7 +92,7 @@ it :: [Int]</code></pre>
 Let’s consider the following function:</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE RequiredTypeArguments #-}</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="ot">as ::</span> <span class="kw">forall</span> a<span class="op">.</span> a <span class="ot">-&gt;</span> <span class="kw">forall</span> a&#39; <span class="ot">-&gt;</span> a <span class="op">~</span> a&#39; <span class="ot">=&gt;</span> a&#39;</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="ot">as ::</span> <span class="kw">forall</span> a<span class="op">.</span> a <span class="ot">-&gt;</span> <span class="kw">forall</span> a' <span class="ot">-&gt;</span> a <span class="op">~</span> a' <span class="ot">=&gt;</span> a'</span>
 <span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>as x _ <span class="ot">=</span> x</span></code></pre></div>
 <p>This function serves like a type annotation, when used as an infix operator:</p>
 <pre><code>ghci&gt; :set +t
@@ -91,13 +108,13 @@ it :: Double</code></pre>
 <p>This is not much to be thankful for, but you can easily create function that specify “part of a type”:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE RequiredTypeArguments #-}</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ot">as&#39; ::</span> <span class="kw">forall</span> f a<span class="op">.</span> f a <span class="ot">-&gt;</span> <span class="kw">forall</span> a&#39; <span class="ot">-&gt;</span> a <span class="op">~</span> a&#39; <span class="ot">=&gt;</span> f a&#39;</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>as&#39; x _ <span class="ot">=</span> x</span></code></pre></div>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="ot">as' ::</span> <span class="kw">forall</span> f a<span class="op">.</span> f a <span class="ot">-&gt;</span> <span class="kw">forall</span> a' <span class="ot">-&gt;</span> a <span class="op">~</span> a' <span class="ot">=&gt;</span> f a'</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>as' x _ <span class="ot">=</span> x</span></code></pre></div>
 <pre><code>ghci&gt; :m + Data.Functor.Identity
-ghci&gt; Identity 42 `as&#39;` Int
+ghci&gt; Identity 42 `as'` Int
 Identity 42
 it :: Identity Int
-ghci&gt; Identity 42 `as&#39;` Rational
+ghci&gt; Identity 42 `as'` Rational
 Identity (42 % 1)
 it :: Identity Rational</code></pre>
 <p>Of course, specifying part of a type has been possible with <code>PartialTypeSignatures</code> extension.</p>
@@ -112,10 +129,10 @@ Is such a definition possible?</p>
 The <code>a</code> in typeclass and the <code>a</code> in <code>forall</code> are different variables.</p>
 <div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Actual interpretation</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">NewStorable</span> a <span class="kw">where</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  sizeOf ::</span> <span class="kw">forall</span> a&#39; <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  sizeOf ::</span> <span class="kw">forall</span> a' <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- Externally-visible type would be:</span></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- sizeOf :: forall a. NewStorable a =&gt; forall a&#39; -&gt; Int</span></span></code></pre></div>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- sizeOf :: forall a. NewStorable a =&gt; forall a' -&gt; Int</span></span></code></pre></div>
 <p>The right way is to create a wrapper.</p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE AllowAmbiguousTypes #-}</span></span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
@@ -127,7 +144,7 @@ The <code>a</code> in typeclass and the <code>a</code> in <code>forall</code> ar
 <span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>sizeOf a <span class="ot">=</span> sizeOf_ <span class="op">@</span>a</span></code></pre></div>
 <p>An alternative way is a trick using <code>~</code>:</p>
 <div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">NewStorable</span> a <span class="kw">where</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  sizeOf ::</span> <span class="kw">forall</span> a&#39; <span class="ot">-&gt;</span> a <span class="op">~</span> a&#39; <span class="ot">=&gt;</span> <span class="dt">Int</span></span></code></pre></div>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  sizeOf ::</span> <span class="kw">forall</span> a' <span class="ot">-&gt;</span> a <span class="op">~</span> a' <span class="ot">=&gt;</span> <span class="dt">Int</span></span></code></pre></div>
 <p>However, using an extra <code>=&gt;</code> may cause subtle differences in intermediate code.
 Consider the following code:</p>
 <div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE GHC2021 #-}</span></span>
@@ -142,7 +159,7 @@ Consider the following code:</p>
 <span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a><span class="ot">  someValueAmb ::</span> <span class="dt">Int</span></span>
 <span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="ot">  someValueTagged ::</span> <span class="dt">Tagged</span> a <span class="dt">Int</span></span>
 <span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a><span class="ot">  someValueProxy ::</span> <span class="dt">Proxy</span> a <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
-<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a><span class="ot">  someValueVis ::</span> <span class="kw">forall</span> a&#39; <span class="ot">-&gt;</span> a <span class="op">~</span> a&#39; <span class="ot">=&gt;</span> <span class="dt">Int</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a><span class="ot">  someValueVis ::</span> <span class="kw">forall</span> a' <span class="ot">-&gt;</span> a <span class="op">~</span> a' <span class="ot">=&gt;</span> <span class="dt">Int</span></span>
 <span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">Foo</span> <span class="dt">Float</span> <span class="kw">where</span></span>
 <span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>  someValueAmb <span class="ot">=</span> trace <span class="st">&quot;some heavy computation 1&quot;</span> <span class="dv">42</span></span>
@@ -206,8 +223,8 @@ If efficiency is the most important thing to you, you should keep this in mind.<
 For example, the type-level list concatenation <code>++</code> can be defined as follows:</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span><span class="ot"> (++) ::</span> [k] <span class="ot">-&gt;</span> [k] <span class="ot">-&gt;</span> [k]</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">family</span> (<span class="op">++</span>) xs ys</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> &#39;[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x &#39;<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x &#39;<span class="op">:</span> (xs <span class="op">++</span> ys)</span></code></pre></div>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> '[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x '<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x '<span class="op">:</span> (xs <span class="op">++</span> ys)</span></code></pre></div>
 <p>The associativity law <code>xs ++ (ys ++ zs) = (xs ++ ys) ++ zs</code> holds on list concatenation, but GHC’s type checker doesn’t know that.
 To teach the type checker an non-trivial equality, we use theorem proving.
 That is, we define a function like this:</p>
@@ -225,8 +242,8 @@ If <code>xs = x : xss</code>, then we can prove the equation with:</p>
 <p>Now, let’s implement it.
 Since we want to prove by case on <code>xs</code>, we define a data type to enable pattern-matching:</p>
 <div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ProxyList</span> xs <span class="kw">where</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil</span><span class="ot"> ::</span> <span class="dt">ProxyList</span> &#39;[]</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons</span><span class="ot"> ::</span> <span class="dt">Proxy</span> x <span class="ot">-&gt;</span> <span class="dt">ProxyList</span> xs <span class="ot">-&gt;</span> <span class="dt">ProxyList</span> (x &#39;<span class="op">:</span> xs)</span></code></pre></div>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil</span><span class="ot"> ::</span> <span class="dt">ProxyList</span> '[]</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons</span><span class="ot"> ::</span> <span class="dt">Proxy</span> x <span class="ot">-&gt;</span> <span class="dt">ProxyList</span> xs <span class="ot">-&gt;</span> <span class="dt">ProxyList</span> (x '<span class="op">:</span> xs)</span></code></pre></div>
 <p>On the other hand, we don’t need to do case analysis on <code>ys</code> and <code>zs</code>, the parameter can be something like <code>Proxy</code>.
 Therefore, our “proof” will be a function with the following signature:</p>
 <div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ot">appendIsAssociative ::</span> <span class="dt">ProxyList</span> xs <span class="ot">-&gt;</span> proxy2 ys <span class="ot">-&gt;</span> proxy3 zs <span class="ot">-&gt;</span> xs <span class="op">++</span> (ys <span class="op">++</span> zs) <span class="op">:~:</span> (xs <span class="op">++</span> ys) <span class="op">++</span> zs</span></code></pre></div>
@@ -276,8 +293,8 @@ Here, I use <code>(a :~: b, Proxy c)</code>.</p>
 <span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span><span class="ot"> (++) ::</span> [k] <span class="ot">-&gt;</span> [k] <span class="ot">-&gt;</span> [k]</span>
 <span id="cb26-12"><a href="#cb26-12" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">family</span> (<span class="op">++</span>) xs ys</span>
-<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> &#39;[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
-<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x &#39;<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x &#39;<span class="op">:</span> (xs <span class="op">++</span> ys)</span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> '[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x '<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x '<span class="op">:</span> (xs <span class="op">++</span> ys)</span>
 <span id="cb26-15"><a href="#cb26-15" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb26-16"><a href="#cb26-16" aria-hidden="true" tabindex="-1"></a><span class="kw">infixl</span> <span class="dv">1</span> <span class="op">===</span>, <span class="ot">`by`</span></span>
 <span id="cb26-17"><a href="#cb26-17" aria-hidden="true" tabindex="-1"></a></span>
@@ -319,8 +336,8 @@ The implementation is as follows:</p>
 <span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span><span class="ot"> (++) ::</span> [k] <span class="ot">-&gt;</span> [k] <span class="ot">-&gt;</span> [k]</span>
 <span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">family</span> (<span class="op">++</span>) xs ys</span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> &#39;[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x &#39;<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x &#39;<span class="op">:</span> (xs <span class="op">++</span> ys)</span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> '[] <span class="op">++</span> ys <span class="ot">=</span> ys</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="kw">instance</span> (x '<span class="op">:</span> xs) <span class="op">++</span> ys <span class="ot">=</span> x '<span class="op">:</span> (xs <span class="op">++</span> ys)</span>
 <span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a><span class="kw">infixl</span> <span class="dv">1</span> <span class="op">===</span>, <span class="ot">`by`</span></span>
 <span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a></span>
@@ -334,230 +351,35 @@ The implementation is as follows:</p>
 <span id="cb27-23"><a href="#cb27-23" aria-hidden="true" tabindex="-1"></a>beginProof _ <span class="ot">=</span> <span class="dt">Refl</span></span>
 <span id="cb27-24"><a href="#cb27-24" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb27-25"><a href="#cb27-25" aria-hidden="true" tabindex="-1"></a><span class="ot">appendIsAssociative ::</span> <span class="kw">forall</span> xs <span class="ot">-&gt;</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="kw">forall</span> ys <span class="ot">-&gt;</span> <span class="kw">forall</span> zs <span class="ot">-&gt;</span> xs <span class="op">++</span> (ys <span class="op">++</span> zs) <span class="op">:~:</span> (xs <span class="op">++</span> ys) <span class="op">++</span> zs</span>
-<span id="cb27-26"><a href="#cb27-26" aria-hidden="true" tabindex="-1"></a>appendIsAssociative xs ys zs <span class="ot">=</span> <span class="kw">case</span> proxyList&#39; <span class="op">@</span>xs <span class="kw">of</span></span>
-<span id="cb27-27"><a href="#cb27-27" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil&#39;</span> <span class="ot">-&gt;</span> <span class="dt">Refl</span></span>
-<span id="cb27-28"><a href="#cb27-28" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons&#39;</span> <span class="op">@</span>x <span class="op">@</span>xss <span class="ot">-&gt;</span></span>
+<span id="cb27-26"><a href="#cb27-26" aria-hidden="true" tabindex="-1"></a>appendIsAssociative xs ys zs <span class="ot">=</span> <span class="kw">case</span> proxyList' <span class="op">@</span>xs <span class="kw">of</span></span>
+<span id="cb27-27"><a href="#cb27-27" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil'</span> <span class="ot">-&gt;</span> <span class="dt">Refl</span></span>
+<span id="cb27-28"><a href="#cb27-28" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons'</span> <span class="op">@</span>x <span class="op">@</span>xss <span class="ot">-&gt;</span></span>
 <span id="cb27-29"><a href="#cb27-29" aria-hidden="true" tabindex="-1"></a>    beginProof ((x <span class="op">:</span> xss) <span class="op">++</span> (ys <span class="op">++</span> zs))</span>
 <span id="cb27-30"><a href="#cb27-30" aria-hidden="true" tabindex="-1"></a>           <span class="op">===</span> x <span class="op">:</span> (xss <span class="op">++</span> (ys <span class="op">++</span> zs))</span>
 <span id="cb27-31"><a href="#cb27-31" aria-hidden="true" tabindex="-1"></a>           <span class="op">===</span> x <span class="op">:</span> ((xss <span class="op">++</span> ys) <span class="op">++</span> zs) <span class="ot">`by`</span> appendIsAssociative xss ys zs</span>
 <span id="cb27-32"><a href="#cb27-32" aria-hidden="true" tabindex="-1"></a>           <span class="op">===</span> (x <span class="op">:</span> (xss <span class="op">++</span> ys)) <span class="op">++</span> zs</span>
 <span id="cb27-33"><a href="#cb27-33" aria-hidden="true" tabindex="-1"></a>           <span class="op">===</span> ((x <span class="op">:</span> xss) <span class="op">++</span> ys) <span class="op">++</span> zs</span>
 <span id="cb27-34"><a href="#cb27-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-35"><a href="#cb27-35" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ProxyList&#39;</span> xs <span class="kw">where</span></span>
-<span id="cb27-36"><a href="#cb27-36" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil&#39;</span><span class="ot"> ::</span> <span class="dt">ProxyList&#39;</span> &#39;[]</span>
-<span id="cb27-37"><a href="#cb27-37" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons&#39;</span><span class="ot"> ::</span> <span class="kw">forall</span> x xs<span class="op">.</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyList&#39;</span> (x &#39;<span class="op">:</span> xs)</span>
+<span id="cb27-35"><a href="#cb27-35" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ProxyList'</span> xs <span class="kw">where</span></span>
+<span id="cb27-36"><a href="#cb27-36" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil'</span><span class="ot"> ::</span> <span class="dt">ProxyList'</span> '[]</span>
+<span id="cb27-37"><a href="#cb27-37" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons'</span><span class="ot"> ::</span> <span class="kw">forall</span> x xs<span class="op">.</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyList'</span> (x '<span class="op">:</span> xs)</span>
 <span id="cb27-38"><a href="#cb27-38" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb27-39"><a href="#cb27-39" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">ProxyListI</span> xs <span class="kw">where</span></span>
-<span id="cb27-40"><a href="#cb27-40" aria-hidden="true" tabindex="-1"></a><span class="ot">  proxyList&#39; ::</span> <span class="dt">ProxyList&#39;</span> xs</span>
+<span id="cb27-40"><a href="#cb27-40" aria-hidden="true" tabindex="-1"></a><span class="ot">  proxyList' ::</span> <span class="dt">ProxyList'</span> xs</span>
 <span id="cb27-41"><a href="#cb27-41" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-42"><a href="#cb27-42" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> &#39;[] <span class="kw">where</span></span>
-<span id="cb27-43"><a href="#cb27-43" aria-hidden="true" tabindex="-1"></a>  proxyList&#39; <span class="ot">=</span> <span class="dt">PNil&#39;</span></span>
+<span id="cb27-42"><a href="#cb27-42" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> '[] <span class="kw">where</span></span>
+<span id="cb27-43"><a href="#cb27-43" aria-hidden="true" tabindex="-1"></a>  proxyList' <span class="ot">=</span> <span class="dt">PNil'</span></span>
 <span id="cb27-44"><a href="#cb27-44" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-45"><a href="#cb27-45" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyListI</span> (x &#39;<span class="op">:</span> xs) <span class="kw">where</span></span>
-<span id="cb27-46"><a href="#cb27-46" aria-hidden="true" tabindex="-1"></a>  proxyList&#39; <span class="ot">=</span> <span class="dt">PCons&#39;</span> <span class="op">@</span>x <span class="op">@</span>xs</span></code></pre></div>
+<span id="cb27-45"><a href="#cb27-45" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyListI</span> (x '<span class="op">:</span> xs) <span class="kw">where</span></span>
+<span id="cb27-46"><a href="#cb27-46" aria-hidden="true" tabindex="-1"></a>  proxyList' <span class="ot">=</span> <span class="dt">PCons'</span> <span class="op">@</span>x <span class="op">@</span>xs</span></code></pre></div>
 <h2 id="acknowledgements">Acknowledgements</h2>
 <p>I must thank all the people who worked for GHC 9.10 release, especially Serokell’s GHC team for the work on dependent types.
-Thank you!</p>]]></description>
-    <pubDate>Sat, 11 May 2024 00:00:00 UT</pubDate>
-    <guid>https://minoki.github.io/posts/2024-05-11-playing-with-visible-forall.html</guid>
-    <dc:creator>Arata Mizuki</dc:creator>
-</item>
-<item>
-    <title>Introducing LunarML: The Standard ML compiler that produces Lua/JavaScript</title>
-    <link>https://minoki.github.io/posts/2023-12-17-lunarml-release.html</link>
-    <description><![CDATA[<p>Today I would like to announce the initial release of LunarML, the new Standard ML compiler I have been developing for several years.</p>
-<ul>
-<li><a href="https://github.com/minoki/LunarML">minoki/LunarML: The Standard ML compiler that produces Lua/JavaScript</a></li>
-</ul>
-<h2 id="introduction">Introduction</h2>
-<p>It is hard to create large software in an untyped language.
-However, there are situations where the use of untyped languages is unavoidable due to the constraints of the runtime environment.
-This situation can be remedied by a compiler, which converts programs written in statically-typed languages to code in untyped languages.
-Such compilers are also called transpilers.</p>
-<p>Since JavaScript used to be the only programming language that could be used on the Web, many compilers that compile to JavaScript have appeared.
-However, there are still few compilers that output other scripting languages, such as Lua.
-Therefore, I decided to create a new compiler that can convert from a statically-typed language to Lua.</p>
-<p>As for the input language, I decided to use an existing language instead of creating a new one.
-I like ML languages, so after considering several languages in the ML family, I chose Standard ML, which has the following features:</p>
-<ul>
-<li>Powerful type inference</li>
-<li>Strict evaluation</li>
-<li>The module system, which allows encapsulation and code reuse</li>
-<li>The Definition and multiple conforming implementations</li>
-</ul>
-<h2 id="features-of-lunarml">Features of LunarML</h2>
-<p>LunarML implements all the features of SML ’97 (including the module system) and some features of Successor ML.
-It also implements some extensions.</p>
-<p>The standard library is still incomplete, but it is functional enough to compile LunarML itself.</p>
-<p>To support multi-file projects, LunarML implements ML Basis system (MLB files) compatible with MLton and MLKit.</p>
-<p>Of course, a program can interact with the Lua and JavaScript worlds.</p>
-<p>Some backends support delimited continuations, which allows integration with async runtimes like Node.js.</p>
-<h2 id="build-and-install">Build and Install</h2>
-<p>LunarML is developed on GitHub:
-<a href="https://github.com/minoki/LunarML" class="uri">https://github.com/minoki/LunarML</a></p>
-<p>You need MLton and Lua to build it.</p>
-<pre><code>$ git clone https://github.com/minoki/LunarML.git
-$ cd LunarML
-$ make
-$ bin/lunarml compile example/hello.sml
-$ lua example/hello.lua
-Hello world!</code></pre>
-<p>To install LunarML in the system, use <code>make install</code>.
-The destination directory can be configured by <code>PREFIX</code> variable (it defaults to <code>/usr/local</code>).</p>
-<pre><code>$ make install prefix=/opt/lunarml
-$ export PATH=/opt/lunarml/bin:$PATH
-$ lunarml compile example/hello.sml</code></pre>
-<p>You might not have MLton installed in the system.
-In that case, you can follow the alternative method: The Docker image.</p>
-<pre><code>$ docker pull ghcr.io/minoki/lunarml:latest
-$ docker run --rm --platform linux/amd64 -v &quot;$(pwd)&quot;:/work -w /work ghcr.io/minoki/lunarml:latest lunarml compile example/hello.sml
-$ lua example/hello.lua
-Hello world!</code></pre>
-<p>If you do not have Docker installed, there is yet another method: The precompiled script.
-If you have Node.js installed, you can download the tarball and run <code>install-precompiled-node</code> target.</p>
-<pre><code>$ curl -LO https://github.com/minoki/LunarML/releases/download/v0.1.0/lunarml-0.1.0.tar.gz
-$ tar xf lunarml-0.1.0.tar.gz
-$ cd lunarml-0.1.0
-$ make install-precompiled-node PREFIX=/opt/lunarml
-$ export PATH=/opt/lunarml/bin:$PATH
-$ lunarml --help</code></pre>
-<p>Warning: The script-compiled LunarML is very slow and you should use native binary for serious use.</p>
-<h2 id="compiling-some-code">Compiling some code</h2>
-<p>“Hello world” in Standard ML might look like:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode sml"><code class="sourceCode sml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>print <span class="st">&quot;Hello world!</span><span class="ch">\n</span><span class="st">&quot;</span>;</span></code></pre></div>
-<p>Let’s compile this.
-You need Lua 5.3 or 5.4 to run the compiled code.</p>
-<pre><code>$ lunarml compile hello.sml
-$ lua hello.lua
-Hello world!</code></pre>
-<p>You can also get JavaScript code for Node.js.
-Pass the <code>--nodejs</code> or <code>--nodejs-cps</code> option:</p>
-<pre><code>$ lunarml compile --nodejs-cps hello.sml
-$ node hello.mjs
-Hello world!</code></pre>
-<p>A (slow) program to compute Fibonacci numbers might look like:</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode sml"><code class="sourceCode sml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fun</span> fib <span class="dv">0</span> = <span class="dv">0</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  | fib <span class="dv">1</span> = <span class="dv">1</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  | fib n = fib (n - <span class="dv">1</span>) + fib (n - <span class="dv">2</span>);</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>print (<span class="st">&quot;fib 10 = &quot;</span> ^ Int.toString (fib <span class="dv">10</span>) ^ <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>);</span></code></pre></div>
-<pre><code>$ lunarml compile --lua fib10.sml
-$ lua fib10.lua                      
-fib 10 = 55
-$ lunarml compile --nodejs fib10.sml
-$ node fib10.mjs
-fib 10 = 55</code></pre>
-<p>You can use multiple-precision integers (called <code>IntInf</code> in Standard ML).
-For Lua target, LunarML uses its own implementation.
-For JavaScript target, LunarML uses <code>BigInt</code>.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode sml"><code class="sourceCode sml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fun</span> fact <span class="dv">0</span> : IntInf.<span class="dt">int</span> = <span class="dv">1</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  | fact n = n * fact (n - <span class="dv">1</span>);</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>print (<span class="st">&quot;50! = &quot;</span> ^ IntInf.toString (fact <span class="dv">50</span>) ^ <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>);</span></code></pre></div>
-<pre><code>$ lunarml compile --lua fact50.sml
-$ lua fact50.lua
-50! = 30414093201713378043612608166064768844377641568960512000000000000
-$ lunarml compile --nodejs fact50.sml
-$ node fact50.mjs
-50! = 30414093201713378043612608166064768844377641568960512000000000000</code></pre>
-<h2 id="compiling-hamlet">Compiling HaMLet</h2>
-<p><a href="https://people.mpi-sws.org/~rossberg/hamlet/">HaMLet</a> is another implementation of Standard ML, written in Standard ML.
-Let’s compile HaMLet to Lua.</p>
-<pre><code>$ git clone https://github.com/rossberg/hamlet.git
-$ cd hamlet/
-$ make hamlet.mlb SYSTEM=mlton
-$ lunarml compile --lua-continuations hamlet.mlb
-$ lua hamlet.lua
-HaMLet 2.0.0 - To Be Or Not To Be Standard ML
-[loading standard basis library]
-- 1 + 1;
-val it = 2 : int
-- OS.Process.exit OS.Process.success : unit;</code></pre>
-<p>Of course, you can also compile it to JavaScript.</p>
-<pre><code>$ lunarml compile --nodejs-cps hamlet.mlb
-$ node hamlet.mjs
-HaMLet 2.0.0 - To Be Or Not To Be Standard ML
-[loading standard basis library]
-- &quot;Hello &quot; ^ &quot;world!&quot;; 
-val it = &quot;Hello world!&quot; : string
-- OS.Process.exit OS.Process.success : unit;</code></pre>
-<h2 id="generating-lua-code">Generating Lua code</h2>
-<p>By default, LunarML produces code for Lua 5.3/5.4.
-You can be explicit with the <code>--lua</code> option.</p>
-<p>To produce code for LuaJIT, you need to set the <code>--luajit</code> option.</p>
-<p>The functionality of Lua can be called via <code>Lua</code> API.
-Currently it is not very easy to use, so I may introduce a more convenient way in the future.</p>
-<ul>
-<li><a href="https://github.com/minoki/LunarML/blob/master/doc/LuaInterface.md">LunarML/doc/LuaInterface.md at master · minoki/LunarML</a></li>
-</ul>
-<p>You can also generate a Lua module with the <code>--lib</code> option.
-Define a variable or module named <code>export</code>, and its content will become accessible from Lua.</p>
-<p>A module defined like this</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode sml"><code class="sourceCode sml"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">structure</span> export = <span class="kw">struct</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> hello = <span class="st">&quot;Hello world!&quot;</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> print = TextIO.print</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">fun</span> add (x, y) = x + y</span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> fun&#39; = <span class="st">&quot;fun!&quot;</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="kw">end</span>;</span></code></pre></div>
-<p>will compile to something like this:</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode lua"><code class="sourceCode lua"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="cf">return</span> <span class="op">{</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="va">hello</span> <span class="op">=</span> <span class="st">&quot;Hello world!&quot;</span><span class="op">,</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">=</span> <span class="op">...,</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="va">add</span> <span class="op">=</span> <span class="op">...,</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="va">fun</span> <span class="op">=</span> <span class="st">&quot;fun!&quot;</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
-<p>The generated code is not very human readable.
-Producing human-readable code is not one of my goals, but I would still like to generate code that is more readable.</p>
-<h2 id="generating-javascript-code">Generating JavaScript code</h2>
-<p>LunarML can also output JavaScript code.
-Currently it requires Node.js for execution and does not work in a browser.
-Use the <code>--nodejs</code> or <code>--nodejs-cps</code> option.</p>
-<p>Many APIs of Node.js are asynchronous, whereas Standard ML’s input/output functions are synchronous.
-To cope with this difference, LunarML performs what is called the CPS conversion on the program when the <code>--nodejs-cps</code> option is used.
-If the <code>--nodejs</code> option is specified, it does not perform CPS conversion, but instead restricts the input/output functions.</p>
-<p>The functionality of JavaScript can be called via <code>JavaScript</code> API.
-I may introduce a more convenient way in the future.</p>
-<ul>
-<li><a href="https://github.com/minoki/LunarML/blob/master/doc/JavaScriptInterface.md">LunarML/doc/JavaScriptInterface.md at master · minoki/LunarML</a></li>
-</ul>
-<p>You can generate an ES module via the <code>--lib</code> option.
-Define a variable or module named <code>export</code>, and it will be exported.</p>
-<p>A module defined like this</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode sml"><code class="sourceCode sml"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">structure</span> export = <span class="kw">struct</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> foo = <span class="dv">42</span> : <span class="dt">int</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> bar = <span class="st">&quot;Hello world!&quot;</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">val</span> baz = <span class="st">&quot;Goodbye world!&quot;</span> : WideString.<span class="dt">string</span></span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="kw">end</span>;</span></code></pre></div>
-<p>will compile to something like this:</p>
-<div class="sourceCode" id="cb17"><pre class="sourceCode js"><code class="sourceCode javascript"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> foo <span class="op">=</span> <span class="dv">42</span><span class="op">;</span></span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> bar <span class="op">=</span> <span class="bu">Uint8Array</span><span class="op">.</span><span class="fu">of</span>(<span class="op">...</span>)<span class="op">;</span></span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> baz <span class="op">=</span> <span class="st">&quot;Goodbye world!&quot;</span><span class="op">;</span></span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="im">export</span> { foo<span class="op">,</span> bar<span class="op">,</span> baz }<span class="op">;</span></span></code></pre></div>
-<p>SML’s standard string type <code>string</code> is represented by <code>Uint8Array</code> in JavaScript.
-You can use <code>WideString.string</code> type to manipulate JavaScript’s 16-bit string.</p>
-<h2 id="future-plans">Future plans</h2>
-<p>LunarML is still a work in progress and there are many features that I would like to implement in the future.
-Some of them are listed below:</p>
-<ul>
-<li>More complete standard library</li>
-<li>More features of Successor ML</li>
-<li>REPL and interpreter</li>
-<li>Online compiler</li>
-<li>More backends
-<ul>
-<li>JavaScript for browsers</li>
-<li>PHP</li>
-<li>WebAssembly with GC</li>
-</ul></li>
-<li>Package manager</li>
-</ul>
-<p>Lastly, I would be happy to receive a star on the GitHub repository:</p>
-<ul>
-<li><a href="https://github.com/minoki/LunarML">minoki/LunarML: The Standard ML compiler that produces Lua/JavaScript</a></li>
-</ul>
-<p>Thank you for reading!</p>]]></description>
-    <pubDate>Sun, 17 Dec 2023 00:00:00 UT</pubDate>
-    <guid>https://minoki.github.io/posts/2023-12-17-lunarml-release.html</guid>
-    <dc:creator>Arata Mizuki</dc:creator>
-</item>
+Thank you!</p>
 
-    </channel>
-</rss>
+        </div>
+        <div id="footer">
+            Site proudly generated by
+            <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+        </div>
+    </body>
+</html>
