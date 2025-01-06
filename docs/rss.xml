@@ -7,8 +7,234 @@
         <description><![CDATA[Posts about functional programming languages]]></description>
         <atom:link href="https://minoki.github.io/rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sat, 11 May 2024 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Mon, 06 Jan 2025 00:00:00 UT</lastBuildDate>
         <item>
+    <title>How to use GHC's LLVM backend</title>
+    <link>https://minoki.github.io/posts/2025-01-06-ghc-llvm-backend.html</link>
+    <description><![CDATA[<p>Japanese version: <a href="https://zenn.dev/mod_poppo/articles/ghc-llvm-backend">GHCのLLVMバックエンドの使い方</a> <em>This article was translated from Japanese with help of AI. Of course, the translation was checked and corrected by the human.</em></p>
+<hr />
+<p>GHC is a compiler capable of generating native code.
+It provides three methods for generating native code: its own NCG (Native Code Generator) backend, the LLVM backend, and the via-C backend that generates code via C sources.</p>
+<p>Typically, the NCG backend is used to generate code for x86 or AArch64, but there may be situations where you want to use the LLVM backend.
+This article explains how to enable and use the LLVM backend in GHC.</p>
+<!-- GHC introduced the LLVM backend in version 7.0, released in 2010. -->
+<p>Here are the features of the LLVM backend compared to the NCG backend:</p>
+<ul>
+<li>Supports more architectures: As of this writing, ARM, AArch64, LoongArch, RISC-V, System Z, x86, and x86-64. (Some of these are also supported by NCG, but others are only supported via the LLVM backend.)</li>
+<li>Supports SIMD primitives (Though NCG supports some SIMD primitives for x86-64 starting from GHC 9.12, it is still in development.)</li>
+<li>Leverages optimizations implemented in LLVM.</li>
+</ul>
+<p>For certain targets, using the LLVM backend is mandatory.
+For example:</p>
+<ul>
+<li>To generate code for AArch64 with GHC &lt;= 9.0, you need the LLVM backend.</li>
+<li>Similarly, generating RISC-V code with GHC &lt;= 9.10 requires the LLVM backend.</li>
+</ul>
+<p>Note: The sections “Installing LLVM” and “Configuring GHC to Use LLVM” do not apply to Windows. For Windows-specific instructions, see the “For Windows” section below.</p>
+<h2 id="installing-llvm">Installing LLVM</h2>
+<p>For non-Windows systems, LLVM is not bundled with GHC and must be installed separately using your system’s package manager.</p>
+<p>The version of LLVM you need depends on the GHC version.
+The following table summarizes the compatibility:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th style="text-align: left;">GHC</th>
+<th style="text-align: left;">LLVM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">GHC 8.10.7</td>
+<td style="text-align: left;">LLVM &gt;= 9 &amp;&amp; &lt;= 12</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.0.2</td>
+<td style="text-align: left;">LLVM &gt;= 9 &amp;&amp; &lt;= 12</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.2.8</td>
+<td style="text-align: left;">LLVM &gt;= 9 &amp;&amp; &lt;= 12</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.4.8</td>
+<td style="text-align: left;">LLVM &gt;= 10 &amp;&amp; &lt;= 13 (if you are using <code>-mavx</code>, you need LLVM &lt;= 12)</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.6</td>
+<td style="text-align: left;">LLVM &gt;= 11 &amp;&amp; &lt;= 15 (if you are using <code>-mavx</code>, you need LLVM &lt;= 12)</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.8</td>
+<td style="text-align: left;">LLVM &gt;= 11 &amp;&amp; &lt;= 15 (if you are using <code>-mavx</code>, you need LLVM &lt;= 12)</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.10</td>
+<td style="text-align: left;">LLVM &gt;= 13 &amp;&amp; &lt;= 15</td>
+</tr>
+<tr>
+<td style="text-align: left;">GHC 9.12</td>
+<td style="text-align: left;">LLVM &gt;= 13 &amp;&amp; &lt;= 19</td>
+</tr>
+</tbody>
+</table>
+<p>Note: Use LLVM 12 for GHC &lt;= 9.8 if you plan to use the <code>-mavx</code> option (<a href="https://gitlab.haskell.org/ghc/ghc/-/issues/23870">GHC #23870</a>).</p>
+<p>Here, I describe the procedures to install LLVM 15.</p>
+<p>For Ubuntu or similar systems using <code>apt</code>:</p>
+<pre><code>$ sudo apt install llvm-15 clang-15</code></pre>
+<p>For macOS using Homebrew:</p>
+<pre><code>$ brew install llvm@15</code></pre>
+<p>For macOS using MacPorts:</p>
+<pre><code>$ sudo port install llvm-15 clang-15</code></pre>
+<p>Among the libraries and commands provided by LLVM, the ones required by GHC are these:</p>
+<ul>
+<li>The <code>opt</code> command: The optimizer for LLVM IR.</li>
+<li>The <code>llc</code> command: The tool to generate assembly output from LLVM IR.</li>
+<li>The <code>clang</code> command: GHC 9.10+ uses it as an assembler.</li>
+</ul>
+<p>Let’s see where these commands are located.</p>
+<p>On Ubuntu, commands have the suffix <code>-15</code>:</p>
+<pre><code>$ which opt-15 llc-15 clang-15
+/usr/bin/opt-15
+/usr/bin/llc-15
+/usr/bin/clang-15</code></pre>
+<p>Alternatively, <code>/usr/lib/llvm-15/bin</code> contains the commands without suffix:</p>
+<pre><code>$ ls /usr/lib/llvm-15/bin/{opt,llc,clang}
+/usr/lib/llvm-15/bin/clang
+/usr/lib/llvm-15/bin/llc
+/usr/lib/llvm-15/bin/opt</code></pre>
+<p>On macOS with Homebrew, the commands are in <code>$(brew --prefix llvm@15)/bin</code>:</p>
+<pre><code>$ ls $(brew --prefix llvm@15)/bin/{opt,llc,clang}
+/opt/homebrew/opt/llvm@15/bin/clang
+/opt/homebrew/opt/llvm@15/bin/llc
+/opt/homebrew/opt/llvm@15/bin/opt</code></pre>
+<p>On macOS with MacPorts, commands have the suffix <code>-mp-15</code>:</p>
+<pre><code>$ which opt-mp-15 llc-mp-15 clang-mp-15
+/opt/local/bin/opt-mp-15
+/opt/local/bin/llc-mp-15
+/opt/local/bin/clang-mp-15</code></pre>
+<p>Alternatively, <code>/opt/local/libexec/llvm-15/bin</code> contains the commands without suffix:</p>
+<pre><code>$ ls /opt/local/libexec/llvm-15/bin/{opt,llc,clang}
+/opt/local/libexec/llvm-15/bin/clang
+/opt/local/libexec/llvm-15/bin/llc
+/opt/local/libexec/llvm-15/bin/opt</code></pre>
+<p>Adding the directory containing the suffix-less commands to your PATH makes it easier for GHC to locate them, which is convenient.
+However, since different versions of GHC may require different versions of LLVM, I do not recommend adding the suffix-less commands to your PATH if you need to manage multiple GHC/LLVM versions simultaneously.</p>
+<h2 id="configuring-ghc-to-use-llvm">Configuring GHC to Use LLVM</h2>
+<p>GHC needs to know the location of the LLVM tools (<code>opt</code>, <code>llc</code>, and <code>clang</code>).
+There are two ways to configure this:</p>
+<ul>
+<li>Specify the paths each time you compile.</li>
+<li>Set the paths when installing GHC.</li>
+</ul>
+<h3 id="specify-paths-at-compile-time">Specify Paths at Compile Time</h3>
+<p>Use the <code>-pgmlo</code>, <code>-pgmlc</code>, and <code>-pgmlas</code> flags to specify the locations of <code>opt</code>, <code>llc</code>, and <code>clang</code>, respectively.
+For example, if you want to use GHC 9.12.1 with LLVM 15 installed by Homebrew, you type:</p>
+<pre><code>$ ghc-9.12.1 -fllvm -pgmlo $(brew --prefix llvm@15)/bin/opt \
+    -pgmlc $(brew --prefix llvm@15)/bin/llc \
+    -pgmlas $(brew --prefix llvm@15)/bin/clang Main.hs</code></pre>
+<h3 id="configure-paths-during-ghc-installation">Configure Paths During GHC Installation</h3>
+<p>If you specify the location of LLVM tools during GHC installation, you won’t need to specify options like <code>-pgmlo</code> each time.</p>
+<p>First, if the LLVM tools are in a directory included in your PATH, and the command names follow one of the formats below:</p>
+<pre><code>opt-15 opt-15.0 opt15 opt
+llc-15 llc-15.0 llc15 llc
+clang-15 clang-15.0 clang15 clang</code></pre>
+<p>GHC’s <code>configure</code> command will automatically detect and record the LLVM toolchain names during installation.</p>
+<p>If LLVM wasn’t installed at the time of GHC installation, you will need to reinstall or reconfigure GHC after installing LLVM.
+For example. using GHCup, you can run:</p>
+<pre><code>$ ghcup install ghc 9.12.1 --force</code></pre>
+<p>With Stack, you can use:</p>
+<pre><code>$ stack setup 9.12.1 --reinstall</code></pre>
+<p>If the LLVM tools are not in the PATH or their names are non-standard (e.g. when using Homebrew or MacPorts), you need to manually specify the locations of <code>opt</code>, <code>llc</code>, and <code>clang</code> when running GHC’s <code>configure</code> command.
+This is done by setting the <code>OPT</code>, <code>LLC</code>, and <code>LLVMAS</code> environment variables.</p>
+<p>For GHCup, the process looks like this:</p>
+<pre><code>$ # Using Homebrew
+$ env OPT=$(brew --prefix llvm@15)/bin/opt \
+      LLC=$(brew --prefix llvm@15)/bin/llc \
+      LLVMAS=$(brew --prefix llvm@15)/bin/clang \
+      ghcup install ghc 9.12.1 --force
+
+$ # Using MacPorts
+$ env OPT=opt-mp-15 LLC=llc-mp-15 LLVMAS=clang-mp-15 \
+      ghcup install ghc 9.12.1 --force</code></pre>
+<p>If you installed GHC using Stack, follow these steps:</p>
+<pre><code>$ # Using Homebrew
+$ env OPT=$(brew --prefix llvm@15)/bin/opt \
+      LLC=$(brew --prefix llvm@15)/bin/llc \
+      LLVMAS=$(brew --prefix llvm@15)/bin/clang \
+      stack setup 9.12.1 --reinstall
+
+$ # Using MacPorts
+$ env OPT=opt-mp-15 LLC=llc-mp-15 LLVMAS=clang-mp-15 \
+      stack setup 9.12.1 --reinstall</code></pre>
+<p>To install GHC directly from a tarball:</p>
+<pre><code>$ curl -LO https://downloads.haskell.org/~ghc/9.12.1/ghc-9.12.1-aarch64-apple-darwin.tar.xz
+$ tar xf ghc-9.12.1-aarch64-apple-darwin.tar.xz
+$ cd ghc-9.12.1-aarch64-apple-darwin
+
+$ # Using Homebrew
+$ env OPT=$(brew --prefix llvm@15)/bin/opt \
+      LLC=$(brew --prefix llvm@15)/bin/llc \
+      LLVMAS=$(brew --prefix llvm@15)/bin/clang \
+      ./configure --prefix=/opt/ghc-9.12.1
+
+$ # Using MacPorts
+$ env OPT=opt-mp-15 LLC=llc-mp-15 LLVMAS=clang-mp-15 \
+      ./configure --prefix=/opt/ghc-9.12.1
+
+$ sudo make install</code></pre>
+<p>The names of the detected or manually specified LLVM commands (<code>opt</code>, <code>llc</code>, <code>clang</code>) are recorded in the <code>lib/settings</code> file.
+You can check the content like this:</p>
+<pre><code>$ # For GHCup
+$ grep LLVM ~/.ghcup/ghc/9.12.1/lib/ghc-9.12.1/lib/settings
+,(&quot;LLVM target&quot;, &quot;arm64-apple-darwin&quot;)
+,(&quot;LLVM llc command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/llc&quot;)
+,(&quot;LLVM opt command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/opt&quot;)
+,(&quot;LLVM llvm-as command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/clang&quot;)
+
+$ # For Stack
+$ grep LLVM ~/.stack/programs/aarch64-osx/ghc-9.12.1/lib/ghc-9.12.1/lib/settings
+,(&quot;LLVM target&quot;, &quot;arm64-apple-darwin&quot;)
+,(&quot;LLVM llc command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/llc&quot;)
+,(&quot;LLVM opt command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/opt&quot;)
+,(&quot;LLVM llvm-as command&quot;, &quot;/opt/homebrew/opt/llvm@15/bin/clang&quot;)</code></pre>
+<p>Note:
+If you temporarily add <code>PATH=$(brew --prefix llvm@15)/bin:$PATH</code> to include the LLVM commands during setup, only the command names (e.g. <code>opt</code>) are recorded in the <code>lib/settings</code> file instead of the full paths.
+For this reason, it is better to use environment variables like <code>OPT</code> when specifying the locations of the commands.</p>
+<h2 id="for-windows">For Windows</h2>
+<p>On Windows, GHC includes LLVM starting from version 9.4.
+With GHC 9.12 and later, the LLVM bundled with GHC is automatically used.</p>
+<p>However, for GHC versions &lt;= 9.10, attempting to use the LLVM backend with floating-point numbers can lead to linker errors, making it effectively unusable.
+For more details, refer to <a href="https://gitlab.haskell.org/ghc/ghc/-/issues/22487">GHC #22487</a>.</p>
+<h2 id="using-the-llvm-backend">Using the LLVM Backend</h2>
+<p>If the setup is successful, you can use the LLVM backend by passing the <code>-fllvm</code> option to GHC:</p>
+<pre><code>$ ghc -fllvm hello.hs</code></pre>
+<p>Of course, if you chose to the “specify paths at compile time” method, you’ll also need to provide options such as <code>-pgmlo</code> each time.</p>
+<h2 id="using-the-llvm-backend-in-github-actions">Using the LLVM Backend in GitHub Actions</h2>
+<p>There may be scenarios where you want to enable the LLVM backend in GitHub Actions.
+With the knowledge gained so far, configuring the LLVM backend in GitHub Actions should not be difficult.
+For a practical example, see <a href="https://github.com/minoki/ghc-llvm-backend-test/blob/main/.github/workflows/build.yaml">ghc-llvm-backend-test/.github/workflows/build.yaml</a>.</p>
+<p>One point to note is that the runner image might already include a version of GHC.
+In such cases, you need to pass the <code>--force</code> option to GHCup.
+Since the current <code>haskell-actions/setup</code> does not support passing the <code>--force</code> option, you can either install GHCup directly or use the <a href="https://github.com/marketplace/actions/ghcup-setup">haskell/ghcup-setup</a> action.</p>
+<h2 id="known-issues-with-the-llvm-backend">Known Issues with the LLVM Backend</h2>
+<p>Here are some known issues related to the LLVM backend, including ones already mentioned:</p>
+<ul>
+<li><p>GHC &lt;= 9.8 &amp;&amp; LLVM &gt;= 13: <a href="https://gitlab.haskell.org/ghc/ghc/-/issues/23870">#23870: LLVM 13+ doesn’t recognize <code>-stack-alignment</code> option · Issues · Glasgow Haskell Compiler / GHC · GitLab</a> This issue arises when the <code>-mavx</code> option is specified.</p></li>
+<li><p>GHC &lt;= 9.10 on Windows: <a href="https://gitlab.haskell.org/ghc/ghc/-/issues/22487">#22487: Link error when using LLVM backend on Windows: undefined symbol: <code>_fltused</code> · Issues · Glasgow Haskell Compiler / GHC · GitLab</a> This occurs whe floating-point numbers are used.</p></li>
+<li><p>GHC 9.10.1 on macOS: <a href="https://gitlab.haskell.org/ghc/ghc/-/issues/24999">#24999: LLVM version detection logic in configure doesn’t work on macOS · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></p></li>
+</ul>
+<h2 id="conclusion">Conclusion</h2>
+<p>Start using GHC’s LLVM backend to take full advantage of its optimizations and architecture support.
+Happy coding!</p>]]></description>
+    <pubDate>Mon, 06 Jan 2025 00:00:00 UT</pubDate>
+    <guid>https://minoki.github.io/posts/2025-01-06-ghc-llvm-backend.html</guid>
+    <dc:creator>Arata Mizuki</dc:creator>
+</item>
+<item>
     <title>Playing with Visible Forall in GHC 9.10</title>
     <link>https://minoki.github.io/posts/2024-05-11-playing-with-visible-forall.html</link>
     <description><![CDATA[<p><em>Japanese version</em>: <a href="https://zenn.dev/mod_poppo/articles/playing-with-visible-forall">GHC 9.10で実装された可視なforallで遊ぶ</a></p>
