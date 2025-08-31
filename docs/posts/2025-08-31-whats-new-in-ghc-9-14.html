@@ -1,0 +1,643 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>An Unofficial Guide to What's New in GHC 9.14 - Mizuki's Blog</title>
+        <link rel="alternate" type="application/rss+xml" title="RSS Feed" href="../rss.xml" />
+        <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    </head>
+    <body>
+        <div id="header">
+            <div id="logo">
+                <a href="../">Mizuki's Blog</a>
+            </div>
+            <div id="navigation">
+                <a href="../">Home</a>
+                <a href="../about.html">About</a>
+                <a href="../contact.html">Contact</a>
+                <a href="../archive.html">Archive</a>
+            </div>
+        </div>
+
+        <div id="content">
+            <h1>An Unofficial Guide to What's New in GHC 9.14</h1>
+
+            <div class="info">
+    Posted on August 31, 2025
+    
+</div>
+
+<p>I’ve been writing posts in Japanese over the past few years introducing new features in GHC.
+I thought such posts might also be useful for readers in the English-speaking community, so with some help from tools like ChatGPT, I’ve translated the latest one into English.
+I hope this will be helpful when you try out the new GHC.</p>
+<p>The original Japanese article can be found at <a href="https://zenn.dev/mod_poppo/articles/whats-new-in-ghc-9-14">GHC 9.14の新機能</a>.</p>
+<hr />
+<p>GHC 9.14.1-alpha1 was released on August 20, 2025 (in the author’s timezone).</p>
+<ul>
+<li><a href="https://discourse.haskell.org/t/ghc-9-14-1-alpha1-released/12786">GHC 9.14.1-alpha1 released - Announcements - Haskell Community</a></li>
+</ul>
+<p>In this post, I’ll go through the new features in GHC 9.14, based on my own (somewhat subjective) perspective.</p>
+<p>This article is not a comprehensive overview.
+In particular, areas I’m less familiar with—like the RTS and Template Haskell—aren’t really covered.
+Please also check out the official release notes:</p>
+<ul>
+<li><a href="https://downloads.haskell.org/ghc/9.14.0.20250819/docs/users_guide/9.14.1-notes.html">2.1. Version 9.14.1 — Glasgow Haskell Compiler 9.14.0.20250819 User’s Guide</a>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/blob/ghc-9.14/docs/users_guide/9.14.1-notes.rst">docs/users_guide/9.14.1-notes.rst · ghc-9.14 · Glasgow Haskell Compiler / GHC · GitLab</a>
+<!-- * [Changelog for base-4.22.0.0 | Hackage](https://hackage.haskell.org/package/base-4.22.0.0/changelog) --></li>
+</ul></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/blob/ghc-9.14/libraries/base/changelog.md">libraries/base/changelog.md · ghc-9.14 · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/wikis/migration/9.14">9.14 · Wiki · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>If you want to try out the alpha release with GHCup, you’ll need to add the <code>prereleases</code> channel.
+See <a href="https://www.haskell.org/ghcup/guide/#release-channels">Release channels - User Guide - GHCup</a> for details.</p>
+<pre><code>$ ghcup config add-release-channel prereleases
+$ ghcup install ghc 9.14.0.20250819</code></pre>
+<p>The reason I’m publishing this “what’s new” post while GHC is still in alpha is to encourage more people to give the alpha a try.
+That way, we can catch as many issues as possible before the final release.
+So, please do try it out!</p>
+<h1 id="long-term-support-lts">Long-Term Support (LTS)</h1>
+<ul>
+<li><a href="https://www.haskell.org/ghc/blog/20250702-ghc-release-schedules.html">GHC LTS Releases — The Glasgow Haskell Compiler</a></li>
+<li>Background
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/26067">#26067: Please revise the release policy · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://discourse.haskell.org/t/please-revise-ghc-release-policy/12158">Please revise GHC release policy - Links - Haskell Community</a></li>
+</ul></li>
+</ul>
+<p>Until now, GHC has followed a schedule of releasing a new major version every six months.
+Bug fixes and other patches would typically be backported to around the three most recent branches (currently GHC 9.10, 9.12, and 9.14 — <a href="https://gitlab.haskell.org/ghc/ghc/-/wikis/GHC-status">see status</a>).</p>
+<p>However, it usually takes time for a given major version to become stable through bug fixes, and for the ecosystem to catch up.
+By the time a release feels “stable enough to use,” its support window is often already approaching its end.
+For example, as of August 2025, GHCup recommends 9.6.7, but the 9.6 series itself is already out of support.</p>
+<p>To address this, GHC will now designate some major versions as Long-Term Support (LTS) releases, aimed at users who want a stable version they can rely on for a longer period.
+LTS releases will receive support for about 2–3 years. The first LTS release will be GHC 9.14.</p>
+<h1 id="new-features-in-ghc-9.14">New Features in GHC 9.14</h1>
+<h2 id="specialize-pragmas-can-now-take-expressions">SPECIALIZE pragmas can now take expressions</h2>
+<ul>
+<li><a href="https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0493-specialise-expressions.rst">Allow expressions in SPECIALISE pragmas - ghc-proposals/ghc-proposals</a></li>
+</ul>
+<p>In GHC, parametric polymorphism and type classes are implemented using type erasure and dictionary passing, which generally come with some runtime cost.
+To generate efficient code, optimizations such as <strong>inlining</strong> and <strong>specialization</strong> are used.</p>
+<p>To guide the compiler on inlining and specialization, we can use the <code>INLINE</code> pragma and the <code>SPECIALIZE</code> pragma.</p>
+<p>Traditionally, the syntax for <code>SPECIALIZE</code> was:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE &lt;name&gt; :: &lt;type&gt; #-}</span></span></code></pre></div>
+<p>For example, if you had <code>someFunc :: Monad m =&gt; m a -&gt; m b -&gt; m ([a], b)</code> and wanted to specialize it for <code>m = StateT Int IO</code>, you had to write:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE someFunc :: StateT Int IO a -&gt; State Int IO b -&gt; StateT Int IO ([a], b) #-}</span></span></code></pre></div>
+<p>This gets cumbersome when the type you want to specialize appears multiple times—you have to repeat it everywhere.</p>
+<p>Now, <code>SPECIALIZE</code> pragmas can take expressions.
+In particular, with the help of the <code>TypeApplications</code> extension, the example above can be written as:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE someFunc @(StateT Int IO) #-}</span></span></code></pre></div>
+<p>You can also specialize with respect to argument values.
+For example:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ot">foo ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> [<span class="dt">Int</span>] <span class="ot">-&gt;</span> [<span class="dt">Int</span>]</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>foo <span class="op">!</span>a <span class="ot">=</span> <span class="fu">map</span> (<span class="op">+</span> a)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# INLINE [0] foo #-}</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE foo 0 #-}</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co">{- Equivalent to defining a rewrite rule: foo 0 = map (+ 0) -}</span></span></code></pre></div>
+<p>Like rewrite rules, you can also use variables with <code>forall</code>.
+For example, if you want to specialize on the second argument of:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ot">pow ::</span> <span class="dt">Num</span> a <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> a</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>pow _ <span class="dv">0</span> <span class="ot">=</span> <span class="dv">1</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>pow x <span class="dv">1</span> <span class="ot">=</span> x</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>pow x n <span class="op">|</span> <span class="fu">even</span> n    <span class="ot">=</span> pow (x <span class="op">*</span> x) (n <span class="ot">`quot`</span> <span class="dv">2</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>        <span class="op">|</span> <span class="fu">otherwise</span> <span class="ot">=</span> x <span class="op">*</span> pow (x <span class="op">*</span> x) (n <span class="ot">`quot`</span> <span class="dv">2</span>)</span></code></pre></div>
+<p>you can write:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE forall x. pow x 1 #-}</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE forall x. pow x 2 #-}</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE forall x. pow x 3 #-}</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE forall x. pow x 4 #-}</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE forall x. pow x 5 #-}</span></span></code></pre></div>
+<p>As an undocumented feature, it used to be possible to write multiple types in a comma-separated list:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# SPECIALIZE foo :: T1, T2 #-}</span></span></code></pre></div>
+<p>But this form is scheduled for removal in GHC 9.18.</p>
+<h2 id="wincomplete-record-selectors-is-now-enabled-by--wall"><code>-Wincomplete-record-selectors</code> is now enabled by <code>-Wall</code></h2>
+<p>In GHC 9.10, the option <code>-Wincomplete-record-selectors</code> was introduced, which warns when a record selector that can fail is used. Starting with GHC 9.14, this option is now enabled as part of <code>-Wall</code>.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">T</span> <span class="ot">=</span> <span class="dt">A</span> {<span class="ot"> a ::</span> <span class="dt">Int</span> }</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>       <span class="op">|</span> <span class="dt">B</span> {<span class="ot"> b ::</span> <span class="dt">String</span> }</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ot">f ::</span> <span class="dt">T</span> <span class="ot">-&gt;</span> <span class="dt">String</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>f t <span class="ot">=</span> b t <span class="op">++</span> <span class="st">&quot;\n&quot;</span></span></code></pre></div>
+<pre><code>$ ghc-9.14 -Wall recordsel.hs
+recordsel.hs:5:7: warning: [GHC-17335] [-Wincomplete-record-selectors]
+    Selecting the record field ‘b’ may fail for the following constructors:
+      A
+  |
+5 | f t = b t ++ &quot;\n&quot;
+  |       ^</code></pre>
+<h2 id="changes-around-scopedtypevariables-typeapplications-and-typeabstractions">Changes around ScopedTypeVariables, TypeApplications, and TypeAbstractions</h2>
+<p>Previously, when both the <code>ScopedTypeVariables</code> and <code>TypeApplications</code> extensions were enabled, it was possible to write type bindings directly in patterns. For example, the following code compiles in GHC 9.12:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE ScopedTypeVariables #-}</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE TypeApplications #-}</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">T</span> a <span class="ot">=</span> <span class="dt">MkT</span> a</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="ot">f ::</span> <span class="kw">forall</span> a<span class="op">.</span> <span class="dt">T</span> a <span class="ot">-&gt;</span> a</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>f t <span class="ot">=</span> <span class="kw">case</span> t <span class="kw">of</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">MkT</span> <span class="op">@</span>a2 x <span class="ot">-&gt;</span> x</span></code></pre></div>
+<p>Starting with GHC 9.14, such code now requires the <code>TypeAbstractions</code> extension to be enabled.</p>
+<h2 id="changes-in-desugaring-for-overloadedrecordupdate">Changes in desugaring for OverloadedRecordUpdate</h2>
+<ul>
+<li><a href="https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0583-hasfield-redesign.rst">HasField redesign - ghc-proposals/ghc-proposals</a></li>
+</ul>
+<p>In connection with Haskell’s record-related extensions, there is a class called <code>HasField</code>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">GHC.Records</span> <span class="kw">where</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">HasField</span> x r a <span class="op">|</span> x r <span class="ot">-&gt;</span> a <span class="kw">where</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  getField ::</span> r <span class="ot">-&gt;</span> a</span></code></pre></div>
+<p>Combined with the <code>DuplicateRecordFields</code> extension, this allows you to work with different records that share the same field name (via the <code>getField</code> function):</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DuplicateRecordFields #-}</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DataKinds #-}</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Records</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">S</span> <span class="ot">=</span> <span class="dt">S</span> {<span class="ot"> foo ::</span> <span class="dt">Int</span> }</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">T</span> <span class="ot">=</span> <span class="dt">T</span> {<span class="ot"> foo ::</span> <span class="dt">String</span> }</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> <span class="op">$</span> getField <span class="op">@</span><span class="st">&quot;foo&quot;</span> (<span class="dt">S</span> <span class="dv">42</span>)</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">putStrLn</span> <span class="op">$</span> getField <span class="op">@</span><span class="st">&quot;foo&quot;</span> (<span class="dt">T</span> <span class="st">&quot;Hello&quot;</span>)</span></code></pre></div>
+<p>Currently, the <code>HasField</code> class only supports retrieving record fields.
+There is a plan to extend this so that fields can also be updated.</p>
+<p>Originally, the idea was to add a <code>setField</code> function with the following type:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ot">setField ::</span> <span class="kw">forall</span> x r a<span class="op">.</span> <span class="dt">HasField</span> x r a <span class="ot">=&gt;</span> r <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> r</span></code></pre></div>
+<p>Indeed, in GHC 9.2, Record Dot Syntax was implemented to desugar into <code>setField</code> of this form.</p>
+<p>Under the new plan, the argument order of <code>setField</code> changes to:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">SetField</span> x r a <span class="op">|</span> x r <span class="ot">-&gt;</span> a <span class="kw">where</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="op">...</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ot">  setField ::</span> a <span class="ot">-&gt;</span> r <span class="ot">-&gt;</span> r</span></code></pre></div>
+<p>In other words, the field value now comes first, followed by the record.</p>
+<p>With this new argument order in mind, examples using <code>OverloadedRecordDot</code> would look like this:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE CPP #-}</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE AllowAmbiguousTypes #-}</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DataKinds #-}</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE FunctionalDependencies #-}</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE OverloadedRecordDot #-}</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE OverloadedRecordUpdate #-}</span></span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE RebindableSyntax #-}</span></span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Prelude</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Records</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Foo</span> <span class="ot">=</span> <span class="dt">Foo</span> {<span class="ot"> x ::</span> <span class="dt">Int</span> } <span class="kw">deriving</span> <span class="dt">Show</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Bar</span> <span class="ot">=</span> <span class="dt">Bar</span> {<span class="ot"> foo ::</span> <span class="dt">Foo</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>               ,<span class="ot"> y ::</span> <span class="dt">String</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>               } <span class="kw">deriving</span> <span class="dt">Show</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">HasField'</span> x r a <span class="op">|</span> x r <span class="ot">-&gt;</span> a <span class="kw">where</span></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a><span class="pp">#if MIN_VERSION_GLASGOW_HASKELL(9, 14, 0, 0)</span></span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a><span class="ot">  setField ::</span> a <span class="ot">-&gt;</span> r <span class="ot">-&gt;</span> r</span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a><span class="pp">#else</span></span>
+<span id="cb16-21"><a href="#cb16-21" aria-hidden="true" tabindex="-1"></a><span class="ot">  setField ::</span> r <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> r</span>
+<span id="cb16-22"><a href="#cb16-22" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span>
+<span id="cb16-23"><a href="#cb16-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-24"><a href="#cb16-24" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">HasField'</span> <span class="st">&quot;x&quot;</span> <span class="dt">Foo</span> <span class="dt">Int</span> <span class="kw">where</span></span>
+<span id="cb16-25"><a href="#cb16-25" aria-hidden="true" tabindex="-1"></a><span class="pp">#if MIN_VERSION_GLASGOW_HASKELL(9, 14, 0, 0)</span></span>
+<span id="cb16-26"><a href="#cb16-26" aria-hidden="true" tabindex="-1"></a>  setField x _ <span class="ot">=</span> <span class="dt">Foo</span> x</span>
+<span id="cb16-27"><a href="#cb16-27" aria-hidden="true" tabindex="-1"></a><span class="pp">#else</span></span>
+<span id="cb16-28"><a href="#cb16-28" aria-hidden="true" tabindex="-1"></a>  setField _ x <span class="ot">=</span> <span class="dt">Foo</span> x</span>
+<span id="cb16-29"><a href="#cb16-29" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span>
+<span id="cb16-30"><a href="#cb16-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-31"><a href="#cb16-31" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">HasField'</span> <span class="st">&quot;foo&quot;</span> <span class="dt">Bar</span> <span class="dt">Foo</span> <span class="kw">where</span></span>
+<span id="cb16-32"><a href="#cb16-32" aria-hidden="true" tabindex="-1"></a><span class="pp">#if MIN_VERSION_GLASGOW_HASKELL(9, 14, 0, 0)</span></span>
+<span id="cb16-33"><a href="#cb16-33" aria-hidden="true" tabindex="-1"></a>  setField foo <span class="dt">Bar</span> { foo <span class="ot">=</span> _, y <span class="ot">=</span> y } <span class="ot">=</span> <span class="dt">Bar</span> { foo <span class="ot">=</span> foo, y <span class="ot">=</span> y }</span>
+<span id="cb16-34"><a href="#cb16-34" aria-hidden="true" tabindex="-1"></a><span class="pp">#else</span></span>
+<span id="cb16-35"><a href="#cb16-35" aria-hidden="true" tabindex="-1"></a>  setField <span class="dt">Bar</span> { foo <span class="ot">=</span> _, y <span class="ot">=</span> y } foo <span class="ot">=</span> <span class="dt">Bar</span> { foo <span class="ot">=</span> foo, y <span class="ot">=</span> y }</span>
+<span id="cb16-36"><a href="#cb16-36" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span>
+<span id="cb16-37"><a href="#cb16-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-38"><a href="#cb16-38" aria-hidden="true" tabindex="-1"></a>u <span class="ot">=</span> <span class="dt">Bar</span> { foo <span class="ot">=</span> <span class="dt">Foo</span> { x <span class="ot">=</span> <span class="dv">42</span> }, y <span class="ot">=</span> <span class="st">&quot;Hello!&quot;</span> }</span>
+<span id="cb16-39"><a href="#cb16-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-40"><a href="#cb16-40" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> (u { foo<span class="op">.</span>x <span class="ot">=</span> <span class="dv">37</span> })</span></code></pre></div>
+<h2 id="allowing-multilinestrings-in-foreign-import">Allowing MultilineStrings in <code>foreign import</code></h2>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25157">#25157: Support multiline strings in foreign import · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>You can now use multiline string literals (via the <code>MultilineStrings</code> extension) in <code>foreign import</code> declarations.
+This should be especially handy for JavaScript FFI.</p>
+<p>Here’s an example from the issue:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> javascript</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;&quot;&quot;</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="st">  (() =&gt; {</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="st">    console.log(&quot;</span>hello<span class="st">&quot;);</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="st">    console.log(1 + 1);</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="st">  })</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="st">  &quot;&quot;&quot;</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="ot">  action ::</span> <span class="dt">IO</span> ()</span></code></pre></div>
+<h2 id="coerce-and-type-defaulting"><code>coerce</code> and Type Defaulting</h2>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/21003">#21003: Coercible constraints should be picked arbitrarily · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>Ambiguous types involving the <code>coerce</code> function or the <code>Coercible</code> class are now resolved more aggressively.
+For example, the following program would trigger a type ambiguity error in GHC 9.12, but it compiles successfully in GHC 9.14:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Data.Coerce</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> <span class="op">$</span> coerce (<span class="dv">42</span><span class="ot"> ::</span> <span class="dt">Int</span>)</span></code></pre></div>
+<pre><code>$ runghc-9.12 coerce.hs
+coerce.hs:4:16: error: [GHC-10283]
+    • Couldn't match representation of type ‘a0’ with that of ‘Int’
+        arising from a use of ‘coerce’
+    • In the second argument of ‘($)’, namely ‘coerce (42 :: Int)’
+      In the expression: print $ coerce (42 :: Int)
+      In an equation for ‘main’: main = print $ coerce (42 :: Int)
+  |
+4 | main = print $ coerce (42 :: Int)
+  |                ^^^^^^
+
+$ runghc-9.14 coerce.hs
+42</code></pre>
+<h2 id="specifying-record-field-multiplicity-under-the-lineartypes-extension">Specifying Record Field Multiplicity under the <code>LinearTypes</code> Extension</h2>
+<ul>
+<li><a href="https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0111-linear-types.rst#records-and-projections">ghc-proposals/proposals/0111-linear-types.rst at master · ghc-proposals/ghc-proposals</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/18462">#18462: Linear types syntax: multiplicity annotation on records · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>With the <code>LinearTypes</code> extension, you can now specify the multiplicity of record fields.</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE LinearTypes #-}</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Exts</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">A</span> <span class="ot">=</span> <span class="dt">MkA</span> <span class="dt">Int</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">B</span> <span class="kw">where</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">MkB</span><span class="ot"> ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">B</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">C</span> <span class="kw">where</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">MkC</span><span class="ot"> ::</span> <span class="dt">Int</span> <span class="op">%</span><span class="dt">'Many</span> <span class="ot">-&gt;</span> <span class="dt">Int</span> <span class="op">%</span><span class="dt">'One</span> <span class="ot">-&gt;</span> <span class="dt">C</span></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- New feature in GHC 9.14</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">R</span> <span class="ot">=</span> <span class="dt">R</span> { foo <span class="op">%</span><span class="dt">'Many</span><span class="ot"> ::</span> <span class="dt">Int</span>, bar <span class="op">%</span><span class="dt">'One</span><span class="ot"> ::</span> <span class="dt">Int</span> }</span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a><span class="ot">fA ::</span> <span class="dt">A</span> <span class="op">%</span><span class="dv">1</span><span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>fA (<span class="dt">MkA</span> x) <span class="ot">=</span> x</span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a><span class="ot">fB ::</span> <span class="dt">B</span> <span class="op">%</span><span class="dv">1</span><span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>fB (<span class="dt">MkB</span> x) <span class="ot">=</span> x</span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- Error (y is discarded)</span></span>
+<span id="cb20-22"><a href="#cb20-22" aria-hidden="true" tabindex="-1"></a><span class="co">-- fC1 :: C %1-&gt; Int</span></span>
+<span id="cb20-23"><a href="#cb20-23" aria-hidden="true" tabindex="-1"></a><span class="co">-- fC1 (MkC x y) = x</span></span>
+<span id="cb20-24"><a href="#cb20-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-25"><a href="#cb20-25" aria-hidden="true" tabindex="-1"></a><span class="ot">fC2 ::</span> <span class="dt">C</span> <span class="op">%</span><span class="dv">1</span><span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb20-26"><a href="#cb20-26" aria-hidden="true" tabindex="-1"></a>fC2 (<span class="dt">MkC</span> x y) <span class="ot">=</span> y</span>
+<span id="cb20-27"><a href="#cb20-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-28"><a href="#cb20-28" aria-hidden="true" tabindex="-1"></a><span class="co">-- Error (bar is discarded)</span></span>
+<span id="cb20-29"><a href="#cb20-29" aria-hidden="true" tabindex="-1"></a><span class="co">-- fR1 :: R %1 -&gt; Int</span></span>
+<span id="cb20-30"><a href="#cb20-30" aria-hidden="true" tabindex="-1"></a><span class="co">-- fR1 (R { foo, bar }) = foo</span></span>
+<span id="cb20-31"><a href="#cb20-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-32"><a href="#cb20-32" aria-hidden="true" tabindex="-1"></a><span class="ot">fR2 ::</span> <span class="dt">R</span> <span class="op">%</span><span class="dv">1</span> <span class="ot">-&gt;</span> <span class="dt">Int</span></span>
+<span id="cb20-33"><a href="#cb20-33" aria-hidden="true" tabindex="-1"></a>fR2 (<span class="dt">R</span> { foo, bar }) <span class="ot">=</span> bar</span>
+<span id="cb20-34"><a href="#cb20-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-35"><a href="#cb20-35" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb20-36"><a href="#cb20-36" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">pure</span> ()</span></code></pre></div>
+<h2 id="you-can-now-use-data-with-the-explicitnamespaces-extension">You can now use <code>data</code> with the <code>ExplicitNamespaces</code> extension</h2>
+<ul>
+<li><a href="https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0581-namespace-specified-imports.rst">Namespace-specified imports - ghc-proposals/ghc-proposals</a></li>
+</ul>
+<p>Haskell has separate namespaces for types and for data (terms).
+Here’s an artificial example: the code below defines <code>T :: Type</code> and <code>U :: Type -&gt; Type</code> in the type namespace, and <code>U :: Int -&gt; T</code> and <code>T :: a -&gt; U a</code> in the data namespace:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">T</span> <span class="ot">=</span> <span class="dt">U</span> <span class="dt">Int</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">U</span> a <span class="ot">=</span> <span class="dt">T</span> a</span></code></pre></div>
+<p>However, the boundary between type and data namespaces is becoming more blurred with extensions like <code>DataKinds</code> and <code>RequiredTypeArguments</code>.
+It’s ideal to avoid ambiguity by giving types and data different names, but there is already a lot of existing code that uses the same name for both, such as the <code>Proxy</code> type:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Proxy</span> a <span class="ot">=</span> <span class="dt">Proxy</span></span></code></pre></div>
+<p>With the <code>ExplicitNamespaces</code> extension, you can choose to import only types.
+Moreover, with the <code>PatternSynonyms</code> extension, you can select only the data constructors:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- This works in older GHC versions too (e.g., 9.12)</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DataKinds #-}</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE ExplicitNamespaces #-}</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE PatternSynonyms #-}</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PT</span> (type <span class="dt">Proxy</span>)</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PD</span> (pattern <span class="dt">Proxy</span>)</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> (<span class="dt">PD.Proxy</span><span class="ot"> ::</span> <span class="dt">PT.Proxy</span> <span class="dt">PD.Proxy</span>)</span></code></pre></div>
+<p>However, writing <code>pattern</code> just to import data constructors feels a bit unnatural.
+In GHC 9.14, <code>ExplicitNamespaces</code> has been extended so that you can now use <code>data</code> to import data constructors:</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DataKinds #-}</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE ExplicitNamespaces #-}</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PT</span> (type <span class="dt">Proxy</span>)</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PD</span> (data <span class="dt">Proxy</span>)</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> (<span class="dt">PD.Proxy</span><span class="ot"> ::</span> <span class="dt">PT.Proxy</span> <span class="dt">PD.Proxy</span>)</span></code></pre></div>
+<p>In the future, you’ll be able to import everything from either the type or data namespace using double dots <code>..</code>, but this is not implemented in GHC 9.14 yet (<a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25901">#25901</a>):</p>
+<div class="sourceCode" id="cb25"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Not yet available in GHC 9.14</span></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE DataKinds #-}</span></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE ExplicitNamespaces #-}</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PT</span> (type ..)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="kw">qualified</span> <span class="dt">Data.Proxy</span> <span class="kw">as</span> <span class="dt">PD</span> (data ..)</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> (<span class="dt">PD.Proxy</span><span class="ot"> ::</span> <span class="dt">PT.Proxy</span> <span class="dt">PD.Proxy</span>)</span></code></pre></div>
+<p>As a side effect, using <code>pattern</code> in import/export lists is now deprecated (though it’s not planned to be removed).
+GHC 9.14 introduces a new warning option, <code>-Wpattern-namespace-specifier</code> (included in <code>-Wcompat</code>), which triggers a warning when <code>pattern</code> is used in import/export lists.</p>
+<h2 id="bug-fix-using-a-data-type-in-a-kind-without-datakinds-no-longer-allowed">Bug fix: using a data type in a kind without <code>DataKinds</code> no longer allowed</h2>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/22141">#22141: GHC-9.4 accepts “data” in kinds without DataKinds · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>The following code uses the data type <code>Nat</code> as a kind, so the <code>DataKinds</code> extension is required.
+However, starting with GHC 9.4, it was incorrectly accepted even without <code>DataKinds</code>:</p>
+<div class="sourceCode" id="cb26"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Data.Kind</span> (<span class="dt">Type</span>)</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.TypeNats</span> (<span class="dt">Nat</span>)</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">T</span><span class="ot"> ::</span> <span class="dt">Nat</span> <span class="ot">-&gt;</span> <span class="dt">Type</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">T</span> a <span class="ot">=</span> <span class="dt">T</span></span></code></pre></div>
+<p>This bug has now been fixed.</p>
+<h2 id="the-monadcomprehensions-extension-now-implies-parallellistcomp">The <code>MonadComprehensions</code> extension now implies <code>ParallelListComp</code></h2>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25645">#25645: MonadComprehensions does not imply ParallelListComp? · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>The <code>MonadComprehensions</code> extension was <a href="https://downloads.haskell.org/ghc/9.12.2/docs/users_guide/exts/monad_comprehensions.html#extension-MonadComprehensions">documented</a> to imply <code>ParallelListComp</code>, but in practice it did not.</p>
+<p>Starting with GHC 9.14, the following code now compiles:</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE MonadComprehensions #-}</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="fu">print</span> [(x,y) <span class="op">|</span> x <span class="ot">&lt;-</span> [<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>] <span class="op">|</span> y <span class="ot">&lt;-</span> [<span class="st">&quot;Alpha&quot;</span>,<span class="st">&quot;Bravo&quot;</span>,<span class="st">&quot;Charlie&quot;</span>]]</span></code></pre></div>
+<h2 id="you-can-now-use-visible-forall-in-data-constructors">You can now use visible <code>forall</code> in data constructors</h2>
+<ul>
+<li><a href="https://github.com/ghc-proposals/ghc-proposals/blob/master/proposals/0281-visible-forall.rst">ghc-proposals/proposals/0281-visible-forall.rst at master · ghc-proposals/ghc-proposals</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25127">#25127: Visible forall in GADTs · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://downloads.haskell.org/ghc/9.14.0.20250819/docs/users_guide/exts/required_type_arguments.html#visible-forall-in-gadts">6.4.19. Required type arguments — Glasgow Haskell Compiler 9.14.0.20250819 User’s Guide</a></li>
+</ul>
+<p>GADTs now support visible <code>forall</code> (i.e., <code>forall a -&gt;</code>).
+The <code>ProxyList'</code> type from the previously written article <a href="./2024-05-11-playing-with-visible-forall.md">Playing with Visible Forall in GHC 9.10</a> can now be rewritten as follows:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE RequiredTypeArguments #-}</span></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="kw">type</span> <span class="dt">ProxyList</span><span class="ot"> ::</span> [k] <span class="ot">-&gt;</span> <span class="dt">Type</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">ProxyList</span> xs <span class="kw">where</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PNil</span><span class="ot"> ::</span> <span class="dt">ProxyList</span> '[]</span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">PCons</span><span class="ot"> ::</span> <span class="kw">forall</span> x <span class="ot">-&gt;</span> <span class="kw">forall</span> xs <span class="ot">-&gt;</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyList</span> (x <span class="op">:</span> xs)</span>
+<span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> <span class="dt">ProxyListI</span> xs <span class="kw">where</span></span>
+<span id="cb28-9"><a href="#cb28-9" aria-hidden="true" tabindex="-1"></a><span class="ot">  proxyList ::</span> <span class="dt">ProxyList</span> xs</span>
+<span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-11"><a href="#cb28-11" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> '[] <span class="kw">where</span></span>
+<span id="cb28-12"><a href="#cb28-12" aria-hidden="true" tabindex="-1"></a>  proxyList <span class="ot">=</span> <span class="dt">PNil</span></span>
+<span id="cb28-13"><a href="#cb28-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-14"><a href="#cb28-14" aria-hidden="true" tabindex="-1"></a><span class="kw">instance</span> <span class="dt">ProxyListI</span> xs <span class="ot">=&gt;</span> <span class="dt">ProxyListI</span> (x <span class="op">:</span> xs) <span class="kw">where</span></span>
+<span id="cb28-15"><a href="#cb28-15" aria-hidden="true" tabindex="-1"></a>  proxyList <span class="ot">=</span> <span class="dt">PCons</span> x xs</span></code></pre></div>
+<h2 id="expanded-simd-support-in-the-x86-ncg-backend">Expanded SIMD Support in the x86 NCG Backend</h2>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25487">#25487: x86 NCG SIMD: Implement pack/insert/broadcast/unpack for integer vectors · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25643">#25643: x86 NCG SIMD: Implement arithmetic operations for integer vectors · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/26096">#26096: Better lowering for shuffleFloatX4# and shuffleDoubleX2# · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>SIMD (Single Instruction, Multiple Data) allows you to process multiple data elements with a single instruction, which is useful for writing high-performance code on modern CPUs.
+GHC provides data types and primops for SIMD.</p>
+<p>Until recently, GHC’s SIMD primitives were only available with the LLVM backend.
+Progress has been made: in GHC 9.12, some SIMD types and operations became available on the x86 NCG backend.</p>
+<p>In GHC 9.14, the set of types and operations supported on x86 NCG has expanded.
+In addition, shuffling floating-point vectors no longer requires <code>-mavx</code> on x86 NCG (it was required in GHC 9.12).</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE MagicHash #-}</span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE UnboxedTuples #-}</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Prim</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Exts</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Int</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">FloatX4</span> <span class="ot">=</span> <span class="dt">FloatX4</span> <span class="dt">FloatX4</span><span class="op">#</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a><span class="ot">packFloatX4 ::</span> (<span class="dt">Float</span>, <span class="dt">Float</span>, <span class="dt">Float</span>, <span class="dt">Float</span>) <span class="ot">-&gt;</span> <span class="dt">FloatX4</span></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>packFloatX4 (<span class="dt">F</span><span class="op">#</span> x0, <span class="dt">F</span><span class="op">#</span> x1, <span class="dt">F</span><span class="op">#</span> x2, <span class="dt">F</span><span class="op">#</span> x3) <span class="ot">=</span> <span class="dt">FloatX4</span> (packFloatX4<span class="op">#</span> (<span class="op">#</span> x0, x1, x2, x3 <span class="op">#</span>))</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a><span class="ot">unpackFloatX4 ::</span> <span class="dt">FloatX4</span> <span class="ot">-&gt;</span> (<span class="dt">Float</span>, <span class="dt">Float</span>, <span class="dt">Float</span>, <span class="dt">Float</span>)</span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>unpackFloatX4 (<span class="dt">FloatX4</span> v) <span class="ot">=</span> <span class="kw">case</span> unpackFloatX4<span class="op">#</span> v <span class="kw">of</span> (<span class="op">#</span> x0, x1, x2, x3 <span class="op">#</span>) <span class="ot">-&gt;</span> (<span class="dt">F</span><span class="op">#</span> x0, <span class="dt">F</span><span class="op">#</span> x1, <span class="dt">F</span><span class="op">#</span> x2, <span class="dt">F</span><span class="op">#</span> x3)</span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a><span class="ot">plusFloatX4 ::</span> <span class="dt">FloatX4</span> <span class="ot">-&gt;</span> <span class="dt">FloatX4</span> <span class="ot">-&gt;</span> <span class="dt">FloatX4</span></span>
+<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>plusFloatX4 (<span class="dt">FloatX4</span> u) (<span class="dt">FloatX4</span> v) <span class="ot">=</span> <span class="dt">FloatX4</span> (plusFloatX4<span class="op">#</span> u v)</span>
+<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a><span class="co">-- In GHC 9.14, shuffleFloatX4# works without -mavx</span></span>
+<span id="cb29-19"><a href="#cb29-19" aria-hidden="true" tabindex="-1"></a><span class="ot">reverseFloatX4 ::</span> <span class="dt">FloatX4</span> <span class="ot">-&gt;</span> <span class="dt">FloatX4</span></span>
+<span id="cb29-20"><a href="#cb29-20" aria-hidden="true" tabindex="-1"></a>reverseFloatX4 (<span class="dt">FloatX4</span> v) <span class="ot">=</span> <span class="dt">FloatX4</span> (shuffleFloatX4<span class="op">#</span> v v (<span class="op">#</span> <span class="dv">3</span><span class="op">#</span>, <span class="dv">2</span><span class="op">#</span>, <span class="dv">1</span><span class="op">#</span>, <span class="dv">0</span><span class="op">#</span> <span class="op">#</span>))</span>
+<span id="cb29-21"><a href="#cb29-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-22"><a href="#cb29-22" aria-hidden="true" tabindex="-1"></a><span class="co">-- In GHC 9.14, Int32X4# and similar are available on x86 NCG</span></span>
+<span id="cb29-23"><a href="#cb29-23" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Int32X4</span> <span class="ot">=</span> <span class="dt">Int32X4</span> <span class="dt">Int32X4</span><span class="op">#</span></span>
+<span id="cb29-24"><a href="#cb29-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-25"><a href="#cb29-25" aria-hidden="true" tabindex="-1"></a><span class="ot">packInt32X4 ::</span> (<span class="dt">Int32</span>, <span class="dt">Int32</span>, <span class="dt">Int32</span>, <span class="dt">Int32</span>) <span class="ot">-&gt;</span> <span class="dt">Int32X4</span></span>
+<span id="cb29-26"><a href="#cb29-26" aria-hidden="true" tabindex="-1"></a>packInt32X4 (<span class="dt">I32</span><span class="op">#</span> x0, <span class="dt">I32</span><span class="op">#</span> x1, <span class="dt">I32</span><span class="op">#</span> x2, <span class="dt">I32</span><span class="op">#</span> x3) <span class="ot">=</span> <span class="dt">Int32X4</span> (packInt32X4<span class="op">#</span> (<span class="op">#</span> x0, x1, x2, x3 <span class="op">#</span>))</span>
+<span id="cb29-27"><a href="#cb29-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-28"><a href="#cb29-28" aria-hidden="true" tabindex="-1"></a><span class="ot">unpackInt32X4 ::</span> <span class="dt">Int32X4</span> <span class="ot">-&gt;</span> (<span class="dt">Int32</span>, <span class="dt">Int32</span>, <span class="dt">Int32</span>, <span class="dt">Int32</span>)</span>
+<span id="cb29-29"><a href="#cb29-29" aria-hidden="true" tabindex="-1"></a>unpackInt32X4 (<span class="dt">Int32X4</span> v) <span class="ot">=</span> <span class="kw">case</span> unpackInt32X4<span class="op">#</span> v <span class="kw">of</span> (<span class="op">#</span> x0, x1, x2, x3 <span class="op">#</span>) <span class="ot">-&gt;</span> (<span class="dt">I32</span><span class="op">#</span> x0, <span class="dt">I32</span><span class="op">#</span> x1, <span class="dt">I32</span><span class="op">#</span> x2, <span class="dt">I32</span><span class="op">#</span> x3)</span>
+<span id="cb29-30"><a href="#cb29-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-31"><a href="#cb29-31" aria-hidden="true" tabindex="-1"></a><span class="ot">plusInt32X4 ::</span> <span class="dt">Int32X4</span> <span class="ot">-&gt;</span> <span class="dt">Int32X4</span> <span class="ot">-&gt;</span> <span class="dt">Int32X4</span></span>
+<span id="cb29-32"><a href="#cb29-32" aria-hidden="true" tabindex="-1"></a>plusInt32X4 (<span class="dt">Int32X4</span> u) (<span class="dt">Int32X4</span> v) <span class="ot">=</span> <span class="dt">Int32X4</span> (plusInt32X4<span class="op">#</span> u v)</span>
+<span id="cb29-33"><a href="#cb29-33" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-34"><a href="#cb29-34" aria-hidden="true" tabindex="-1"></a><span class="ot">reverseInt32X4 ::</span> <span class="dt">Int32X4</span> <span class="ot">-&gt;</span> <span class="dt">Int32X4</span></span>
+<span id="cb29-35"><a href="#cb29-35" aria-hidden="true" tabindex="-1"></a>reverseInt32X4 (<span class="dt">Int32X4</span> v) <span class="ot">=</span> <span class="dt">Int32X4</span> (shuffleInt32X4<span class="op">#</span> v v (<span class="op">#</span> <span class="dv">3</span><span class="op">#</span>, <span class="dv">2</span><span class="op">#</span>, <span class="dv">1</span><span class="op">#</span>, <span class="dv">0</span><span class="op">#</span> <span class="op">#</span>))</span>
+<span id="cb29-36"><a href="#cb29-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-37"><a href="#cb29-37" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb29-38"><a href="#cb29-38" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb29-39"><a href="#cb29-39" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> a <span class="ot">=</span> packFloatX4 (<span class="fl">1.0</span>, <span class="fl">2.0</span>, <span class="fl">3.0</span>, <span class="fl">4.0</span>)</span>
+<span id="cb29-40"><a href="#cb29-40" aria-hidden="true" tabindex="-1"></a>      b <span class="ot">=</span> packFloatX4 (<span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
+<span id="cb29-41"><a href="#cb29-41" aria-hidden="true" tabindex="-1"></a>      c <span class="ot">=</span> plusFloatX4 a b</span>
+<span id="cb29-42"><a href="#cb29-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (unpackFloatX4 c)</span>
+<span id="cb29-43"><a href="#cb29-43" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (unpackFloatX4 (reverseFloatX4 c))</span>
+<span id="cb29-44"><a href="#cb29-44" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> d <span class="ot">=</span> packInt32X4 (<span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">30</span>, <span class="dv">40</span>)</span>
+<span id="cb29-45"><a href="#cb29-45" aria-hidden="true" tabindex="-1"></a>      e <span class="ot">=</span> packInt32X4 (<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>)</span>
+<span id="cb29-46"><a href="#cb29-46" aria-hidden="true" tabindex="-1"></a>      f <span class="ot">=</span> plusInt32X4 d e</span>
+<span id="cb29-47"><a href="#cb29-47" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (unpackInt32X4 f)</span>
+<span id="cb29-48"><a href="#cb29-48" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (unpackInt32X4 (reverseInt32X4 f))</span></code></pre></div>
+<p>At this stage, the vector width supported on x86 NCG is still limited to 128 bits.</p>
+<h2 id="ghci-now-supports-multiple-home-units">GHCi Now Supports Multiple Home Units</h2>
+<ul>
+<li><a href="https://well-typed.com/blog/2025/06/ghci-multiple-home-units/">Making GHCi compatible with multiple home units - Well-Typed: The Haskell Consultants</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/20889">#20889: MHU: Most of GHCi commands do not work · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>GHCi can now handle projects composed of multiple units (libraries and executables) more effectively.
+I don’t fully understand all the internals yet, so I’ll demonstrate by experimenting.</p>
+<p>First, create a sample project:</p>
+<pre><code>$ mkdir mhu-example &amp;&amp; cd mhu-example
+$ cabal init -n --tests --libandexe -d &quot;base &gt;=4.19 &amp;&amp; &lt;4.23&quot;</code></pre>
+<p>Now, try running it in the REPL:</p>
+<pre><code>$ cabal repl -w ghc-9.12 exe:mhu-example
+Resolving dependencies...
+Build profile: -w ghc-9.12.2 -O1
+In order, the following will be built (use -v for more details):
+ - mhu-example-0.1.0.0 (lib) (configuration changed)
+ - mhu-example-0.1.0.0 (interactive) (exe:mhu-example) (configuration changed)
+Configuring library for mhu-example-0.1.0.0...
+Preprocessing library for mhu-example-0.1.0.0...
+Building library for mhu-example-0.1.0.0...
+[1 of 1] Compiling MyLib            ( src/MyLib.hs, dist-newstyle/build/x86_64-osx/ghc-9.12.2/mhu-example-0.1.0.0/build/MyLib.o, dist-newstyle/build/x86_64-osx/ghc-9.12.2/mhu-example-0.1.0.0/build/MyLib.dyn_o )
+Configuring executable 'mhu-example' for mhu-example-0.1.0.0...
+Preprocessing executable 'mhu-example' for mhu-example-0.1.0.0...
+GHCi, version 9.12.2: https://www.haskell.org/ghc/  :? for help
+[1 of 2] Compiling Main             ( app/Main.hs, interpreted )
+Ok, one module loaded.
+ghci&gt; main
+Hello, Haskell!
+someFunc
+ghci&gt;</code></pre>
+<p>Looks good.</p>
+<p>While keeping the REPL open, modify <code>src/MyLib.hs</code> as follows:</p>
+<div class="sourceCode" id="cb32"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">MyLib</span> (someFunc) <span class="kw">where</span></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="ot">someFunc ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>someFunc <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="st">&quot;someFunc, revised&quot;</span></span></code></pre></div>
+<p>Reload in GHCi (<code>:r</code>) and run again—the output <strong>does not change</strong>:</p>
+<pre><code>ghci&gt; :r
+Ok, one module reloaded.
+ghci&gt; main
+Hello, Haskell!
+someFunc</code></pre>
+<p>The linked article explains this in detail, but this illustrates the limitation of older GHC versions.</p>
+<p>Now, try GHC 9.14 with <code>--enable-multi-repl</code>, also specifying the library <code>lib:mhu-example</code> to Cabal:</p>
+<pre><code>$ cabal repl -w ghc-9.14 --enable-multi-repl exe:mhu-example lib:mhu-example
+Resolving dependencies...
+Build profile: -w ghc-9.14.0.20250819 -O1
+In order, the following will be built (use -v for more details):
+ - mhu-example-0.1.0.0 (interactive) (lib) (configuration changed)
+ - mhu-example-0.1.0.0 (interactive) (exe:mhu-example) (configuration changed)
+Configuring library for mhu-example-0.1.0.0...
+Preprocessing library for mhu-example-0.1.0.0...
+Configuring executable 'mhu-example' for mhu-example-0.1.0.0...
+Preprocessing executable 'mhu-example' for mhu-example-0.1.0.0...
+GHCi, version 9.14.0.20250819: https://www.haskell.org/ghc/  :? for help
+[1 of 3] Compiling MyLib            ( src/MyLib.hs, interpreted )[mhu-example-0.1.0.0-inplace]
+[2 of 3] Compiling Main             ( app/Main.hs, interpreted )[mhu-example-0.1.0.0-inplace-mhu-example]
+Ok, two modules loaded.
+ghci&gt; Main.main
+Hello, Haskell!
+someFunc, revised</code></pre>
+<p>Great.</p>
+<p>Now, while keeping the REPL open, modify <code>src/MyLib.hs</code> again:</p>
+<div class="sourceCode" id="cb35"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="kw">module</span> <span class="dt">MyLib</span> (someFunc) <span class="kw">where</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a><span class="ot">someFunc ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>someFunc <span class="ot">=</span> <span class="fu">putStrLn</span> <span class="st">&quot;someFunc, revised^2&quot;</span></span></code></pre></div>
+<p>Reloading the REPL now <strong>reflects changes to the library</strong>:</p>
+<pre><code>ghci&gt; :r
+[1 of 3] Compiling MyLib            ( src/MyLib.hs, interpreted )[mhu-example-0.1.0.0-inplace] [Source file changed]
+Ok, two modules reloaded.
+ghci&gt; Main.main
+Hello, Haskell!
+someFunc, revised^2</code></pre>
+<h2 id="libraries">Libraries</h2>
+<p>We also cover changes to libraries, mainly the <code>base</code> package.</p>
+<h3 id="fail-now-includes-hascallstack"><code>fail</code> Now Includes <code>HasCallStack</code></h3>
+<ul>
+<li><a href="https://github.com/haskell/core-libraries-committee/issues/327">Add HasCallStack to Control.Monad.fail · Issue #327 · haskell/core-libraries-committee</a></li>
+</ul>
+<p><code>HasCallStack</code> is a lightweight mechanism for capturing stack traces.
+Attaching it to functions that may fail (i.e., functions that may call <code>error</code>) helps with debugging.</p>
+<p>In GHC 9.14, the <code>fail</code> function in the <code>MonadFail</code> class now has <code>HasCallStack</code>.
+The <code>fail</code> function is called when a pattern match in a <code>do</code> block fails.
+Here’s an example:</p>
+<div class="sourceCode" id="cb37"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="ot">someFunc ::</span> [<span class="dt">Int</span>] <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>someFunc xs <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>  [a,b] <span class="ot">&lt;-</span> <span class="fu">pure</span> xs</span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (a <span class="op">+</span> b)</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>  someFunc [<span class="dv">1</span>,<span class="dv">3</span>]</span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>  someFunc [<span class="dv">2</span>]</span></code></pre></div>
+<p>Running it with GHC 9.12:</p>
+<pre><code>$ runghc-9.12 fail.hs
+4
+fail.hs: Uncaught exception ghc-internal:GHC.Internal.Exception.ErrorCall:
+
+user error (Pattern match failure in 'do' block at fail.hs:3:3-7)</code></pre>
+<p>Running the same code with GHC 9.14:</p>
+<pre><code>$ runghc-9.14 fail.hs
+4
+fail.hs: Uncaught exception ghc-internal:GHC.Internal.Exception.ErrorCall:
+
+user error (Pattern match failure in 'do' block at fail.hs:3:3-7)
+
+HasCallStack backtrace:
+  throwIO, called at libraries/ghc-internal/src/GHC/Internal/Control/Monad/Fail.hs:66:12 in ghc-internal:GHC.Internal.Control.Monad.Fail
+  a type signature in an instance, called at libraries/ghc-internal/src/GHC/Internal/Control/Monad/Fail.hs:65:13 in ghc-internal:GHC.Internal.Control.Monad.Fail
+  a do statement, called at fail.hs:3:3 in main:Main</code></pre>
+<p>In GHC 9.14, the error message now includes a stack trace.
+In this particular example, the benefit may be limited because the failing pattern match location (<code>fail.hs:3:3-7</code>) is already reported.</p>
+<p>By adding <code>HasCallStack</code> to a function, you can include information about where the function was called. For example, adding it to <code>someFunc</code> shows the caller location:</p>
+<div class="sourceCode" id="cb40"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">GHC.Stack</span> (<span class="dt">HasCallStack</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a><span class="ot">someFunc ::</span> <span class="dt">HasCallStack</span> <span class="ot">=&gt;</span> [<span class="dt">Int</span>] <span class="ot">-&gt;</span> <span class="dt">IO</span> ()</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>someFunc xs <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>  [a,b] <span class="ot">&lt;-</span> <span class="fu">pure</span> xs</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (a <span class="op">+</span> b)</span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>  someFunc [<span class="dv">1</span>,<span class="dv">3</span>]</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>  someFunc [<span class="dv">2</span>]</span></code></pre></div>
+<p>Running with GHC 9.12:</p>
+<pre><code>$ runghc-9.12 fail2.hs
+4
+fail2.hs: Uncaught exception ghc-internal:GHC.Internal.Exception.ErrorCall:
+
+user error (Pattern match failure in 'do' block at fail2.hs:5:3-7)</code></pre>
+<p>Running with GHC 9.14:</p>
+<pre><code>$ runghc-9.14 fail2.hs
+4
+fail2.hs: Uncaught exception ghc-internal:GHC.Internal.Exception.ErrorCall:
+
+user error (Pattern match failure in 'do' block at fail2.hs:5:3-7)
+
+HasCallStack backtrace:
+  throwIO, called at libraries/ghc-internal/src/GHC/Internal/Control/Monad/Fail.hs:66:12 in ghc-internal:GHC.Internal.Control.Monad.Fail
+  a type signature in an instance, called at libraries/ghc-internal/src/GHC/Internal/Control/Monad/Fail.hs:65:13 in ghc-internal:GHC.Internal.Control.Monad.Fail
+  a do statement, called at fail2.hs:5:3 in main:Main
+  someFunc, called at fail2.hs:11:3 in main:Main</code></pre>
+<p>In GHC 9.14, the stack trace now includes the location in the <code>main</code> function (<code>fail2.hs:11:3</code>).</p>
+<h3 id="introduction-of-data.enum.enumerate">Introduction of <code>Data.Enum.enumerate</code></h3>
+<ul>
+<li><a href="https://github.com/haskell/core-libraries-committee/issues/306">enumerate Function · Issue #306 · haskell/core-libraries-committee</a></li>
+</ul>
+<p>A new function <code>enumerate</code> has been added that returns a list containing all elements of an enumeration type. Previously, many people would use the pattern <code>[minBound..maxBound]</code>.</p>
+<div class="sourceCode" id="cb43"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="kw">import</span> <span class="dt">Data.Enum</span></span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> <span class="dt">Color</span> <span class="ot">=</span> <span class="dt">Red</span> <span class="op">|</span> <span class="dt">Green</span> <span class="op">|</span> <span class="dt">Blue</span> <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Enum</span>, <span class="dt">Bounded</span>)</span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a><span class="ot">main ::</span> <span class="dt">IO</span> ()</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>main <span class="ot">=</span> <span class="kw">do</span></span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> ([<span class="fu">minBound</span><span class="op">..</span><span class="fu">maxBound</span>]<span class="ot"> ::</span> [<span class="dt">Color</span>])</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span> (enumerate <span class="op">@</span><span class="dt">Color</span>)</span></code></pre></div>
+<pre><code>$ runghc-9.14 enum.hs 
+[Red,Green,Blue]
+[Red,Green,Blue]</code></pre>
+<h1 id="extra-my-contributions">Extra: My Contributions</h1>
+<p>I (Mizuki) am jotting down a record of my contributions—bug reports, fixes, etc.—that made it into GHC 9.14.</p>
+<ul>
+<li>Enable compilation of integer SIMD primitives on the x86 NCG backend.
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25487">#25487: x86 NCG SIMD: Implement pack/insert/broadcast/unpack for integer vectors · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/25643">#25643: x86 NCG SIMD: Implement arithmetic operations for integer vectors · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul></li>
+<li>Enable compilation of floating-point shuffle on x86 NCG using SSE2 instructions (instead of AVX).
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/26096">#26096: Better lowering for shuffleFloatX4# and shuffleDoubleX2# · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul></li>
+<li>Fix for arithmetic right shift on AArch64 NCG.
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/26061">#26061: Sub-word arithmetic right shift with AArch64 NCG · Issues · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li>Scheduled to be backported to GHC 9.10.3 and also to the 9.12 series.</li>
+</ul></li>
+<li>Fix for <code>bswap64</code> on i386 NCG.
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/merge_requests/14363">!14363: x86 NCG: Fix code generation of bswap64 on i386 · Merge requests · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li>Scheduled to be backported to GHC 9.10.3 and also to the 9.12 series.</li>
+</ul></li>
+<li>Fix for LLVM version detection issues.
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/merge_requests/13763">!13763: Fix LLVM version detection (#25606) · Merge requests · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li>Backported to GHC 9.10.2 and scheduled for backport to the 9.12 series.</li>
+</ul></li>
+</ul>
+<p>I do these contributions as a hobby.
+I’m grateful that a few people have supported me via GitHub Sponsors:</p>
+<ul>
+<li><a href="https://github.com/sponsors/minoki">Sponsor <span class="citation" data-cites="minoki">@minoki</span> on GitHub Sponsors</a>
+<ul>
+<li>At the time of writing, I’m supported by <span class="citation" data-cites="toyboot4e">@toyboot4e</span> and <span class="citation" data-cites="kevin-kmetz">@kevin-kmetz</span>.</li>
+</ul></li>
+</ul>
+<p>Thank you for reading, and enjoy your Haskell journey!</p>
+
+        </div>
+        <div id="footer">
+            Site proudly generated by
+            <a href="http://jaspervdj.be/hakyll">Hakyll</a>
+        </div>
+    </body>
+</html>
