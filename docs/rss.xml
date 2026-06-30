@@ -7,8 +7,386 @@
         <description><![CDATA[Posts about functional programming languages]]></description>
         <atom:link href="https://minoki.github.io/rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Sun, 31 Aug 2025 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Tue, 30 Jun 2026 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Low-level Haskell: The cursed way to emulate inline assembly in Haskell/GHC, or how to return multiple values from a foreign function</title>
+    <link>https://minoki.github.io/posts/2026-06-30-haskell-inline-asm.html</link>
+    <description><![CDATA[<p>This article is an English version of my earlier post “<a href="https://qiita.com/mod_poppo/items/793fdb08e62591d6f3fb">【低レベルHaskell】Haskell (GHC) でもインラインアセンブリに肉薄したい！</a>” (in Japanese). The translation was assisted by AI (if you don’t like reading AI-generated content, please read the Japanese version!).</p>
+<p>Modern CPUs have many instructions specialized for particular purposes. Examples include SIMD, instructions useful for hashing and cryptography, and a variety of others. C and C++ have inline assembly and intrinsics, which let you write code that takes advantage of such instructions.</p>
+<p>Haskell (GHC), on the other hand, has no such mechanism. But that’s no reason to give up just yet. Let’s find a way to invoke obscure CPU instructions from Haskell, and as efficiently as possible.</p>
+<p>First, let me list a few CPU instructions that would be nice to use from Haskell.</p>
+<h2 id="the-subject-the-high-and-low-halves-of-a-product-of-64-bit-integers">The subject: the high and low halves of a product of 64-bit integers</h2>
+<p>Consider computing the product of two 64-bit integers, obtaining both the high 64 bits and the low 64 bits (128 bits in total).</p>
+<p>The ordinary multiplication found in C and Haskell, <code>(*) :: Word64 -&gt; Word64 -&gt; Word64</code>, can only compute the low 64 bits. At the machine-code / assembly level on x86, however, the high 64 bits are computed alongside the product as well.</p>
+<p>For this kind of processing — “easy at the machine-code level, but non-trivial at the C or Haskell level” — we’d like to use inline assembly or intrinsics.</p>
+<p>(Actually, GHC has an intrinsic <code>timesWord2# :: Word# -&gt; Word# -&gt; (# Word#, Word# #)</code>, so you can do this in one shot using it. I chose this subject anyway so that we can measure how much slower the alternatives get compared to a GHC intrinsic.)</p>
+<p>As another subject, <strong>carry-less multiplication</strong> (polynomial multiplication over a finite field) would also be useful for certain purposes. I won’t go into detail in this article, but I’ve placed the test results in the repository.</p>
+<h3 id="in-c">In C</h3>
+<p>GCC/Clang have the <code>__int128</code> type, so you can compute this in one shot using it. No inline assembly or intrinsics required.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="dt">unsigned</span> __int128 wideningMul<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>If we deliberately wrote it with inline assembly, it might look like this:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">uint64_t</span> wideningMul_inlasm<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">,</span> <span class="dt">uint64_t</span> <span class="op">*</span>outHigh<span class="op">)</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">uint64_t</span> lo<span class="op">,</span> hi<span class="op">;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    asm<span class="op">(</span><span class="st">&quot;movq %2, </span><span class="sc">%%</span><span class="st">rax;&quot;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>        <span class="co">// mulq computes the product of %rax and the operand (here %3),</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="co">// placing the high 64 bits in %rdx and the low 64 bits in %rax</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;mulq %3;&quot;</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;movq </span><span class="sc">%%</span><span class="st">rax, %0;&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;movq </span><span class="sc">%%</span><span class="st">rdx, %1;&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">:</span> <span class="st">&quot;=r&quot;</span><span class="op">(</span>lo<span class="op">),</span> <span class="st">&quot;=r&quot;</span><span class="op">(</span>hi<span class="op">)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        <span class="op">:</span> <span class="st">&quot;r&quot;</span><span class="op">(</span>a<span class="op">),</span> <span class="st">&quot;r&quot;</span><span class="op">(</span>b<span class="op">)</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">:</span> <span class="st">&quot;%rax&quot;</span><span class="op">,</span> <span class="st">&quot;%rdx&quot;</span><span class="op">);</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>outHigh <span class="op">=</span> hi<span class="op">;</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> lo<span class="op">;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<h2 id="how-to-return-multiple-values">How to return multiple values</h2>
+<p>Now, this operation takes two <code>uint64_t</code>s and returns a 128-bit value — that is, two <code>uint64_t</code>s. Since C’s syntax has no multiple-value return, you have to choose one of the following ways to return the values:</p>
+<ul>
+<li>Return a struct by value: define a struct like <code>struct uint128 { uint64_t lo, hi; }</code> and return it by value.
+<ul>
+<li>Returning <code>unsigned __int128</code> by value corresponds to this internally. See the x86_64 ABI for details.</li>
+</ul></li>
+<li>Take and pass a pointer: take the location where the second and later return values should be stored as a pointer argument.
+<ul>
+<li>Example: the <code>wideningMul_inlasm</code> function I wrote earlier.</li>
+</ul></li>
+</ul>
+<p>As an example of the former, the C standard <code>div</code>, <code>ldiv</code>, and <code>lldiv</code> functions return a <code>{,l,ll}div_t</code> struct by value.</p>
+<p>The advantage of returning a struct by value is that, depending on the ABI, if the struct is small the values can be returned while kept in registers.</p>
+<p>The disadvantage, on the other hand, is that other languages’ C FFI may not support it. In fact, GHC’s current C FFI does not support passing structs by value.</p>
+<p>There is a proposal to make C structs passable by value through the FFI, but it has seen no movement:</p>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/wikis/c-structures">c structures · Wiki · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/9700">Support C structures in Haskell FFI (#9700) · Issue · ghc/ghc</a></li>
+</ul>
+<h2 id="using-the-c-ffi-with-a-pointer">Using the C FFI (with a pointer)</h2>
+<h3 id="safe-ffi">Safe FFI</h3>
+<p>When there’s something Haskell can’t do, let’s borrow the power of another language! To that end, Haskell has an FFI. With it, you can call functions written in C.</p>
+<p>Let’s give it a try right away:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="pp">#include </span><span class="im">&lt;stdint.h&gt;</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> <span class="dt">uint64_t</span> wideningMul_with_ptr<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">,</span> <span class="dt">uint64_t</span> <span class="op">*</span>outHigh<span class="op">)</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> __int128 result <span class="op">=</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>outHigh <span class="op">=</span> <span class="op">(</span><span class="dt">uint64_t</span><span class="op">)(</span>result <span class="op">&gt;&gt;</span> <span class="dv">64</span><span class="op">);</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span><span class="dt">uint64_t</span><span class="op">)</span>result<span class="op">;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>As I wrote earlier, the current GHC FFI can’t pass structs by value, so we’ll pass one of the return values via a pointer.</p>
+<p>The Haskell side looks like this:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> ccall &quot;wideningMul_with_ptr&quot;</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  c_wideningMul_with_ptr ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Ptr</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Word64</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="ot">wideningMulWithPtr ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word128</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>wideningMulWithPtr <span class="op">!</span>a <span class="op">!</span>b <span class="ot">=</span> unsafePerformIO <span class="op">$</span> <span class="kw">do</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>  Marshal.alloca <span class="op">$</span> \outHigh <span class="ot">-&gt;</span> <span class="kw">do</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    lo <span class="ot">&lt;-</span> c_wideningMul_with_ptr a b outHigh</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    hi <span class="ot">&lt;-</span> peek outHigh</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">return</span> <span class="op">$</span> <span class="dt">Word128</span> hi lo</span></code></pre></div>
+<p>Dealing with a pointer means performing <code>IO</code> in order to allocate space and read out the value. However, the operation as a whole (“multiplying two 64-bit integers”) can be considered pure, so I’ve used <code>unsafePerformIO</code> to write it as a pure function<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a>.</p>
+<p>(By the way, for the <code>Word128</code> type I used the <code>Data.WideWord.Word128</code> type from the <code>wide-word</code> package.)</p>
+<p>Trying it out:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> wideningMulWithPtr <span class="dv">123</span> <span class="dv">456</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dv">56088</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> <span class="dv">123</span> <span class="op">*</span> <span class="dv">456</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dv">56088</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> wideningMulWithPtr (<span class="dv">2</span><span class="op">^</span><span class="dv">63</span>) (<span class="dv">2</span><span class="op">^</span><span class="dv">62</span>) <span class="co">-- using a CPU instruction</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a><span class="dv">42535295865117307932921825928971026432</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;</span> <span class="dv">2</span><span class="op">^</span><span class="dv">125</span> <span class="co">-- computing with arbitrary-precision arithmetic</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="dv">42535295865117307932921825928971026432</span></span></code></pre></div>
+<p>So it seems to be computing correctly.</p>
+<p>If writing the C code in a separate file is a hassle, using a package like <a href="http://hackage.haskell.org/package/inline-c">inline-c</a>, as in</p>
+<ul>
+<li><span class="citation" data-cites="tanakh">@tanakh</span>’s article “<a href="https://qiita.com/tanakh/items/08c15f6e72dbe2da61a8">Haskellにインラインアセンブリを書く</a>” (Writing inline assembly in Haskell, in Japanese)</li>
+</ul>
+<p>might be one option.</p>
+<h3 id="unsafe-ffi">Unsafe FFI</h3>
+<p>Now, Haskell’s FFI has a concept called the safety level. The default is <code>safe</code>, which means “it is safe for the called external code to call back into Haskell functions.”</p>
+<p>The opposite of <code>safe</code> is <code>unsafe</code>, which means “who knows what happens if the called external code calls back into Haskell.”</p>
+<p>An unsafe FFI carries risk, but in exchange it can be expected to have lower overhead.</p>
+<p>You specify the safety level by writing <code>safe</code> or <code>unsafe</code> right after the calling convention in a <code>foreign import</code> declaration:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> ccall unsafe &quot;wideningMul_with_ptr&quot;</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  c_wideningMul_with_ptr ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Ptr</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Word64</span></span></code></pre></div>
+<p>When using the inline-c package, you use the quasiquoters (<code>exp</code>, <code>pure</code>, <code>block</code>) found in <code>Language.C.Inline.Unsafe</code>.</p>
+<h2 id="using-the-c-ffi-calling-twice">Using the C FFI (calling twice)</h2>
+<p>In the previous section, we went through a pointer in order to return multiple values from a function written in C.</p>
+<p>However, passing values via a pointer is presumably slower than passing them in registers<sup>[citation needed]</sup>. You also need to allocate a memory region (GHC’s <code>alloca</code> function allocates on the heap, not the stack). If we can pass the values without using a pointer, so much the better.</p>
+<p>Fortunately, our subject — “multiplying 64-bit integers” — is a low-cost operation. Given that, wouldn’t it be acceptable to perform the same computation for each of the high 64 bits and the low 64 bits separately?</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">// compute the low 64 bits</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> <span class="dt">uint64_t</span> wideningMul_lo<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">)</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> __int128 result <span class="op">=</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span><span class="dt">uint64_t</span><span class="op">)</span>result<span class="op">;</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="co">// compute the high 64 bits</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> <span class="dt">uint64_t</span> wideningMul_hi<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">)</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">unsigned</span> __int128 result <span class="op">=</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span><span class="dt">uint64_t</span><span class="op">)(</span>result <span class="op">&gt;&gt;</span> <span class="dv">64</span><span class="op">);</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> ccall unsafe &quot;wideningMul_lo&quot;</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ot">  c_wideningMul_lo ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> ccall unsafe &quot;wideningMul_hi&quot;</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="ot">  c_wideningMul_hi ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="ot">wideningMul2 ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word128</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>wideningMul2 <span class="op">!</span>a <span class="op">!</span>b <span class="ot">=</span> <span class="dt">Word128</span> (c_wideningMul_hi a b) (c_wideningMul_lo a b)</span></code></pre></div>
+<p>I’ll compare the “call twice and keep everything in registers” approach against the “pass via a pointer” approach later.</p>
+<h2 id="using-the-c-ffi-using-simd-registers">Using the C FFI (using SIMD registers)</h2>
+<p>GHC has no 128-bit integer type that the FFI can handle, but it can use 128-bit-wide SIMD registers — things like <code>Word64X2#</code>. Using one, you can pass 128 bits of data in a register in a single function call (in the System V ABI’s case).</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> __m128i wideningMul_xmm<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">)</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">union</span> <span class="op">{</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>        __m128i m128<span class="op">;</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>        <span class="dt">unsigned</span> __int128 u128<span class="op">;</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span> u<span class="op">;</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    u<span class="op">.</span>u128 <span class="op">=</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> u<span class="op">.</span>m128<span class="op">;</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE MagicHash #-}</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE UnboxedTuples #-}</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE UnliftedFFITypes #-}</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> ccall unsafe &quot;wideningMul_xmm&quot;</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="ot">  c_wideningMul_xmm ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64X2</span><span class="op">#</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ot">wideningMulXMM ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word128</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>wideningMulXMM <span class="op">!</span>a <span class="op">!</span>b <span class="ot">=</span> <span class="kw">case</span> unpackWord64X2<span class="op">#</span> (c_wideningMul_xmm a b) <span class="kw">of</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  (<span class="op">#</span> lo, hi <span class="op">#</span>) <span class="ot">-&gt;</span> <span class="dt">Word128</span> (<span class="dt">W64</span><span class="op">#</span> hi) (<span class="dt">W64</span><span class="op">#</span> lo)</span></code></pre></div>
+<p>This isn’t a general-purpose way to return multiple values, but I brought it up because this particular subject happens to fit in 128 bits.</p>
+<h2 id="black-magic-foreign-import-prim">Black magic: <code>foreign import prim</code></h2>
+<p>As I wrote earlier, current GHC cannot handle C functions that return a struct by value. And when you want to return multiple values from external code, you need to use a pointer or go through multiple function calls. However, GHC does have a means of returning values from external code using multiple registers (multiple-value return): that is <code>foreign import prim</code>.</p>
+<h3 id="about-ghcs-primops">About GHC’s PrimOps</h3>
+<p>An operation that corresponds directly to a machine instruction, such as integer addition, is called a <strong>primitive operation</strong> in GHC parlance (in other words, a GHC intrinsic). For integer addition, the function</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ot">(+#) ::</span> <span class="dt">Int</span><span class="op">#</span> <span class="ot">-&gt;</span> <span class="dt">Int</span><span class="op">#</span> <span class="ot">-&gt;</span> <span class="dt">Int</span><span class="op">#</span></span></code></pre></div>
+<p>is defined. In the old days, the intrinsics (pseudo-)defined in the <code>GHC.Prim</code> module of the ghc-prim package were exposed via the <code>GHC.Exts</code> module of the base package, and you used those. But due to the decoupling of the base package from GHC, <code>GHC.Exts</code> has been frozen, and the newest intrinsics are now available via the <code>GHC.Internal.Exts</code> module of the ghc-internal package or the <code>GHC.PrimOps</code> module of the ghc-experimental package.</p>
+<p>Well, since we want to define our own intrinsics, there’s no need to go into detail about how to use existing ones.</p>
+<p>According to the GHC Wiki page (<a href="https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/prim-ops">prim ops · Wiki · Glasgow Haskell Compiler / GHC · GitLab</a>), GHC’s intrinsics come in three kinds: inline PrimOps, out-of-line PrimOps, and foreign out-of-line PrimOps (<code>foreign import prim</code>).</p>
+<ul>
+<li>inline PrimOps: expanded into an instruction sequence on the spot. Hardcoded into GHC.</li>
+<li>out-of-line PrimOps: follow a dedicated calling convention. Hardcoded into GHC.</li>
+<li>foreign out-of-line PrimOps: follow a dedicated calling convention. Library developers can define them via <code>foreign import prim</code>. Intended for libraries bundled with GHC.</li>
+</ul>
+<p>Of these (or rather, among all the methods available in Haskell for hitting a specific CPU instruction), inline PrimOps are presumably the lowest-cost, but modifying GHC just to use a single instruction is quite a big undertaking<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a>. Hence, foreign out-of-line PrimOps are relatively easy to use.</p>
+<h3 id="using-foreign-import-prim">Using <code>foreign import prim</code></h3>
+<p>An example of Haskell code using <code>foreign import prim</code> looks like this:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ot">{-# LANGUAGE GHCForeignImportPrim, UnliftedFFITypes, MagicHash, UnboxedTuples #-}</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>foreign <span class="kw">import</span> prim &quot;wideningMul_prim&quot;</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  wideningMul_prim<span class="op">#</span><span class="ot"> ::</span> <span class="dt">Word</span><span class="op">#</span> <span class="ot">-&gt;</span> <span class="dt">Word</span><span class="op">#</span> <span class="ot">-&gt;</span> (<span class="op">#</span> <span class="dt">Word</span><span class="op">#</span>, <span class="dt">Word</span><span class="op">#</span> <span class="op">#</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="ot">wideningMul ::</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word64</span> <span class="ot">-&gt;</span> <span class="dt">Word128</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>wideningMul (<span class="dt">W64</span><span class="op">#</span> a) (<span class="dt">W64</span><span class="op">#</span> b)</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="ot">=</span> <span class="kw">case</span> wideningMul_prim<span class="op">#</span> a b <span class="kw">of</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>      (<span class="op">#</span> lo, hi <span class="op">#</span>) <span class="ot">-&gt;</span> <span class="dt">Word128</span> (<span class="dt">W64</span><span class="op">#</span> hi) (<span class="dt">W64</span><span class="op">#</span> lo)</span></code></pre></div>
+<p>At first glance, the only change is that the <code>foreign import</code> calling convention went from <code>ccall</code> to <code>prim</code>. What a relief! (The <code>#</code>s on the type names and tuples are <em>common in low-level Haskell</em>, so nothing to be surprised about at this point. You can also write <code>ccall</code> FFI that uses <code>#</code> all over the place.)</p>
+<p>As for the GHC extensions used: to use <code>foreign import prim</code>, you need the <code>GHCForeignImportPrim</code> extension<a href="#fn3" class="footnote-ref" id="fnref3" role="doc-noteref"><sup>3</sup></a>. Also, the arguments and return values can basically only be unlifted types, so the <code>UnliftedFFITypes</code> extension is required too. <code>MagicHash</code> and <code>UnboxedTuples</code> go without saying.</p>
+<p>There’s a brief explanation of the <code>GHCForeignImportPrim</code> extension in the User’s Guide, but no detailed explanation of the calling convention.</p>
+<ul>
+<li><a href="https://downloads.haskell.org/ghc/9.14.1/docs/users_guide/exts/ffi.html#primitive-imports">6.17. Foreign function interface (FFI) — Glasgow Haskell Compiler 9.14.1 User’s Guide</a></li>
+</ul>
+<p>I’m about to present code that touches GHC’s internal calling convention, but this is <strong>completely unsupported</strong> and <strong>may stop working depending on GHC’s configuration or differences between minor versions</strong>.</p>
+<p>In fact, I have <strong>changed GHC’s internal calling convention with my own hands</strong> before. That was the first of my contributions to GHC to get merged.</p>
+<ul>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/issues/17953">Fewer FP registers than available are used for parameter passing on AArch64 (#17953) · Issue · ghc/ghc</a></li>
+<li><a href="https://gitlab.haskell.org/ghc/ghc/-/merge_requests/5117">Support auto-detection of MAX_REAL_{FLOAT,DOUBLE}_REG up to 6 (#17953) (!5117) · Merge requests · Glasgow Haskell Compiler / GHC · GitLab</a></li>
+</ul>
+<p>If you make use of <code>foreign import prim</code> for some reason, I recommend always keeping an eye on the development status of GHC proper.</p>
+<h3 id="implementing-a-foreign-out-of-line-primop">Implementing a foreign out-of-line PrimOp</h3>
+<p>Now that the Haskell side is ready to use our own PrimOp, the next step is to prepare the implementation.</p>
+<p>GHC’s out-of-line PrimOps are apparently expected to be written in Cmm, but</p>
+<ul>
+<li>Cmm is hard to understand!</li>
+<li>It seems you can’t use inline assembly or architecture-dependent intrinsics from Cmm!</li>
+</ul>
+<p>so we’ll write it directly in assembly. (As I’ll mention later, besides Cmm and raw assembly there’s a third path: messing with LLVM IR.)</p>
+<p>GHC’s calling convention for PrimOps, in the case of x86_64, is roughly:</p>
+<ul>
+<li>Arguments and return values are basically passed in registers. The first is <code>%rbx</code>, the second is <code>%r14</code>, the third is <code>%rsi</code>, the fourth is <code>%rdi</code>, …</li>
+<li>To return to the caller, do <code>jmp *(%rbp)</code>.</li>
+</ul>
+<p>For the register usage, see <a href="https://gitlab.haskell.org/ghc/ghc/-/blob/master/rts/include/stg/MachRegs/x86.h">rts/include/stg/MachRegs/x86.h</a>.</p>
+<p>The actual assembly code looks like this:</p>
+<pre><code>	.globl _wideningMul_prim
+_wideningMul_prim:
+	## first argument: %rbx
+	## second argument: %r14
+	movq %rbx, %rax
+	mulq %r14 ## compute the product of %rax and %r14, putting the high half in %rdx and the low half in %rax
+	movq %rax, %rbx ## put the first return value (lo) in %rbx
+	movq %rdx, %r14 ## put the second return value (hi) in %r14
+	jmp *(%rbp)</code></pre>
+<p>In GHC’s internal calling convention, functions (and continuations) are always tail-called, so registers — except those reserved for the STG machine — are free to use.</p>
+<p>By the way, if you really want to write it in C, there’s apparently a method: “write it as a function with a specific prototype, compile it with Clang, and edit the LLVM IR output by <code>-S -emit-llvm</code> to change the calling convention to ghccc<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a>.” See the links below for details.</p>
+<p>A collection of links that may be helpful:</p>
+<ul>
+<li><a href="http://breaks.for.alienz.org/blog/2012/02/09/parsing-market-data-feeds-with-ragel/">Parsing Market Data with Ragel, clang and GHC primops - Ten Cache Misses</a>: modifies the LLVM IR that clang emits to use GHC’s calling convention</li>
+<li><a href="https://stackoverflow.com/questions/33910131/foreign-import-prim-call-to-llvm">haskell - foreign import prim call to LLVM - Stack Overflow</a>: same as above</li>
+<li><a href="https://stackoverflow.com/questions/41213378/using-foreign-import-prim-with-a-c-function-using-stg-calling-convention">haskell - Using <code>foreign import prim</code> with a C function using STG calling convention - Stack Overflow</a>: same as above</li>
+<li><a href="http://brandon.si/code/almost-inline-asm-in-haskell-with-foreign-import-prim/">Almost Inline ASM in Haskell With Foreign Import Prim - Brandon.Si(mmons)</a>: writes x86_64 assembly directly without going through LLVM
+<ul>
+<li>I referred to this article heavily when writing this post</li>
+<li>The code is here → <a href="https://github.com/jberryman/almost-inline-asm-haskell-example">jberryman/almost-inline-asm-haskell-example: An example of using <code>foreign import prim</code> in ghc haskell to call assembly with low overhead</a></li>
+</ul></li>
+</ul>
+<h3 id="implementing-a-foreign-out-of-line-primop-improved">Implementing a foreign out-of-line PrimOp (improved)</h3>
+<p>The assembly code above has a few issues.</p>
+<ul>
+<li>The function name we’re implementing this time is <code>wideningMul_prim</code>, but I gave its assembly name (symbol name) a leading underscore as <code>_wideningMul_prim</code>. Whether a leading underscore is added generally depends on the platform (OS). For example, it is added on macOS but not on Linux.</li>
+<li>When “returning from the function” I used <code>jmp *(%rbp)</code>, but this doesn’t work if GHC is configured with <code>--disable-tables-next-to-code</code>.</li>
+</ul>
+<p>For the first problem, when an underscore is added a macro <code>LEADING_UNDERSCORE</code> is defined in <code>ghcconfig.h</code>, so you can use that. If you change the assembly source’s extension to an uppercase <code>.S</code>, the preprocessor becomes available, and on GHC 9.12 and later you can <code>#include "ghcconfig.h"</code> (I made the change that enables this). Note that the assembly source’s filename must not start with an uppercase letter, or GHC will mistakenly think a Haskell module name was given on the command line (<code>Foo.S</code> won’t do; it must be <code>foo.S</code>).</p>
+<pre><code>#include &quot;ghcconfig.h&quot;
+#if defined(LEADING_UNDERSCORE)
+#define SYMBOL(name) _##name
+#else
+#define SYMBOL(name) name
+#endif
+    .globl SYMBOL(wideningMul_prim)
+SYMBOL(wideningMul_prim):
+    ...</code></pre>
+<p>As for the second problem, what I’m calling “returning from the function” means “invoking the continuation pushed on top of the STG stack (<code>%rbp</code> on x86_64).” When GHC is configured with <code>--enable-tables-next-to-code</code> (TNTC), the address of the continuation object is the address of the code itself, but otherwise the address of the code is stored at the start of the continuation object. For this layout, refer to <a href="https://gitlab.haskell.org/ghc/ghc/-/blob/44309cd377f115d3e6b788097750bd534b47f3e4/rts/include/rts/storage/InfoTables.h#L186">rts/include/rts/storage/InfoTables.h</a>.</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co">// with --enable-tables-next-to-code</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> StgInfoTable <span class="op">{</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// &lt;- this address is pushed on the STG stack</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    StgCode code<span class="op">[];</span> <span class="co">// machine code</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="co">// with --disable-tables-next-to-code</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> StgInfoTable <span class="op">{</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// &lt;- this address is pushed on the STG stack</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    StgFunPtr entry<span class="op">;</span> <span class="co">// pointer to machine code</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">...</span></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code></pre></div>
+<p>This too can be distinguished using the <code>TABLES_NEXT_TO_CODE</code> macro in <code>ghcconfig.h</code>.</p>
+<pre><code>    ...
+#if defined(TABLES_NEXT_TO_CODE)
+    jmp *(%rbp)
+#else
+    movq (%rbp),%rax
+    jmp *(%rax)
+#endif</code></pre>
+<p>Besides this, GHC also has a configuration called an unregisterised build, and I think the method described here won’t work in that case either.</p>
+<h3 id="combining-a-c-struct-return-with-foreign-import-prim-the-thunk-approach">Combining a C struct return with <code>foreign import prim</code> (the thunk approach)</h3>
+<p>When the work fits in a single instruction as it does here, hand-coding the body of the PrimOp in assembly is no big deal, but for somewhat more complex code you’ll want to write it in a high-level language like C.</p>
+<p>So consider the following approach:</p>
+<ul>
+<li>Write the body of the processing as a C function (using struct return by value).</li>
+<li>Write a PrimOp in assembly that calls the C function.</li>
+<li>Call the assembly-written one from Haskell via <code>foreign import prim</code>.</li>
+</ul>
+<p>In other words, you absorb the difference between the C calling convention and the GHC calling convention with a small amount of assembly code in between. Let’s call this intervening code a thunk. (In Haskell, “thunk” tends to evoke the lazy-evaluation sense, but this is a different sort of thunk.)</p>
+<p>The C part looks like this:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">// __int128 is equivalent to struct { uint64_t lo, hi }; on System V/x86_64 ABI</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> <span class="dt">unsigned</span> __int128 wideningMul_uint128<span class="op">(</span><span class="dt">uint64_t</span> a<span class="op">,</span> <span class="dt">uint64_t</span> b<span class="op">)</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>a <span class="op">*</span> <span class="op">(</span><span class="dt">unsigned</span> __int128<span class="op">)</span>b<span class="op">;</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code></pre></div>
+<p>The thunk written in assembly looks like this:</p>
+<pre><code>#include &quot;ghcconfig.h&quot;
+#if defined(LEADING_UNDERSCORE)
+#define SYMBOL(name) _##name
+#else
+#define SYMBOL(name) name
+#endif
+    .globl SYMBOL(wideningMul_thunk)
+SYMBOL(wideningMul_thunk):
+	## GHC:
+	##   first argument: %rbx
+	##   second argument: %r14
+	## C:
+	##   first argument: %rdi
+	##   second argument: %rsi
+	movq %rbx, %rdi
+	movq %r14, %rsi
+	subq $8, %rsp
+	callq SYMBOL(wideningMul_uint128)
+	addq $8, %rsp
+	## C:
+	##   first return value: %rax
+	##   second return value: %rdx
+	## GHC:
+	##   first return value: %rbx
+	##   second return value: %r14
+	movq %rax, %rbx
+	movq %rdx, %r14
+#if defined(TABLES_NEXT_TO_CODE)
+    jmp *(%rbp)
+#else
+    movq (%rbp),%rax
+    jmp *(%rax)
+#endif</code></pre>
+<p>When you call the C function, you might worry that the registers used by the STG machine get clobbered, but in the x86_64 case the STG registers are deliberately mapped onto the callee-saved registers of the C calling convention, so there’s no need to save them (in both the System V ABI and the Microsoft calling convention).</p>
+<p>You also need to check the alignment of the stack pointer <code>%rsp</code>. In both the x86_64 System V ABI and the Microsoft calling convention, the stack pointer must be a multiple of 16 at the point <code>callq</code> executes. In GHC’s calling convention, you can assume that on entry to a function the stack pointer has the form <code>16 * n - 8</code>. That is, it mimics the state right after issuing a <code>callq</code> instruction with the stack pointer aligned to a multiple of 16. In recent GHC this has become <code>64 * n - 8</code> due to AVX (a change I made myself). For details, see GHC’s <code>rts/StgCRun.c</code>.</p>
+<p>To state the conclusion about the stack pointer: subtract 8 from <code>%rsp</code> just before the <code>callq</code> instruction and you’ll satisfy the requirements of the C calling convention.</p>
+<p>This is wishful thinking, but it would be fun to have a Haskell library that auto-generates thunks like this with Template Haskell, so you could directly call C functions that pass (return) structs by value. Somebody please make it!</p>
+<h2 id="benchmark">Benchmark</h2>
+<p>I’ve considered various ways to implement “obtain the product of two 64-bit integers as a 128-bit integer.” So let’s compare them. The comparison targets are:</p>
+<ul>
+<li>Use Haskell’s arbitrary-precision arithmetic (<code>Integer</code> type).</li>
+<li>Convert the operands to the <code>Word128</code> type of the <code>wide-word</code> package, then multiply.
+<ul>
+<li>The <code>wide-word</code> package internally uses <code>timesWord2#</code>.</li>
+</ul></li>
+<li>Use <code>timesWord2#</code> from <code>GHC.Prim</code>.
+<ul>
+<li>Internally to GHC, this is a kind of inline PrimOp called <code>WordMul2</code>.</li>
+</ul></li>
+<li>Use the C FFI.
+<ul>
+<li>Safe FFI / Unsafe FFI</li>
+<li>Using a pointer (unsafePerformIO / unsafeDupablePerformIO / ****PerformIO) / calling twice / using SIMD registers</li>
+</ul></li>
+<li>Use <code>foreign import prim</code>.
+<ul>
+<li>Implemented in assembly</li>
+<li>The thunk approach</li>
+</ul></li>
+</ul>
+<p>Since GHC already has the built-in <code>timesWord2#</code> for the operation of multiplying two 64-bit integers to get 128 bits, we can also compare “how much difference there is between inline PrimOps and (foreign) out-of-line PrimOps.”</p>
+<p>Let me predict which is fastest: the inline PrimOp <code>timesWord2#</code> should be fastest, followed by foreign out-of-line PrimOps (<code>foreign import prim</code>). I have a feeling that <code>Integer</code>’s arbitrary-precision arithmetic is slowest.</p>
+<p>Here are the actual benchmark results:</p>
+<p><img src="../images/widening-mul.png" style="width:100.0%" /></p>
+<p>If you’d rather read it as text, see <a href="https://github.com/minoki/hs-inline-asm-test/blob/ghc-9.12/widening-mul-report.txt">here</a>.</p>
+<p>To summarize:</p>
+<ul>
+<li>The fastest is <strong>GHC’s built-in <code>timesWord2#</code> function</strong>, at about <strong>4.0ns</strong>. <code>Word128</code>, which internally uses <code>timesWord2#</code>, achieves equivalent performance.</li>
+<li>The runner-up is <strong><code>foreign import prim</code></strong> (assembly only), at about <strong>4.5ns</strong>. The <strong>thunk approach</strong> and “<strong>unsafe FFI + calling twice without a pointer</strong>” follow it (~5.8ns).</li>
+<li>Using XMM registers with unsafe FFI is about <strong>7.0ns</strong>.</li>
+<li>Next is “<strong>unsafe FFI + passing a pointer</strong>,” at about <strong>19ns</strong>. Using unsafeDupablePerformIO or the unspeakable blasphemous one instead of unsafePerformIO gives roughly the same.</li>
+<li>Next is the one using <strong><code>Integer</code>’s arbitrary-precision arithmetic</strong>, at about <strong>32.5ns</strong>.</li>
+<li>Dead last is “<strong>safe FFI</strong>,” at over <strong>60ns</strong>. The reason “calling twice” is slower than “passing a pointer” is presumably that the cost of safe FFI outweighed the cost of passing a pointer.</li>
+</ul>
+<p>The source code I used is on <a href="https://github.com/minoki/hs-inline-asm-test">GitHub</a>. The benchmark was run on WSL2 on my Zen4 machine.</p>
+<h2 id="closing-thoughts-summary">Closing thoughts / summary</h2>
+<p>Unsurprisingly, the version compiled to an inline instruction sequence built into GHC is fastest, but we found that <code>foreign import prim</code> achieves performance that comes close to it. (Since this was a microbenchmark, the gap might widen in more practical examples.)</p>
+<p>What’s surprising is that “unsafe FFI + calling twice without a pointer” holds its own against <code>foreign import prim</code>. In other words, the C FFI can rival <code>foreign import prim</code> depending on how you do it. If the performance difference is slight, choosing the C FFI over the black magic of <code>foreign import prim</code> would be a reasonable call.</p>
+<p>Conversely, even when using the C FFI, if you needlessly use the safe level, it became slower than the “naively written in Haskell without using the CPU’s handy instructions” version.</p>
+<p><strong>When using the C FFI for speed, check that the safety level isn’t needlessly set to safe.</strong></p>
+<ul>
+<li>NB: Use <code>safe</code> if the foreign call runs for a long time or may call back into Haskell, since an <code>unsafe</code> call blocks GC. <code>unsafe</code> is best for short calls.</li>
+</ul>
+<p>That, I think, is a fairly important lesson.</p>
+<section id="footnotes" class="footnotes footnotes-end-of-document" role="doc-endnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Those well-versed in Unsafe Haskell might think, “In this case you could use <code>unsafeDupablePerformIO</code>, or even better, <code>****PerformIO</code>…” Don’t worry, I’ve included the results of those experiments at the end as well.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn2"><p>If your change gets merged into the upstream GHC, the effort might pay off, but getting an intrinsic for a niche instruction merged into GHC requires a correspondingly convincing case. There was apparently an <a href="https://gitlab.haskell.org/ghc/ghc/issues/8153">issue proposing to add AES instructions</a> to GHC in the past, but it was closed as won’t fix.<a href="#fnref2" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn3"><p>A name that really gives off a “GHC-only! External libraries, keep out!” vibe.<a href="#fnref3" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+<li id="fn4"><p>ghccc is the name of GHC’s calling convention within LLVM (→ <a href="https://llvm.org/docs/LangRef.html#calling-conventions">LLVM calling-conventions documentation</a>). It used to be called cc10.<a href="#fnref4" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section>]]></description>
+    <pubDate>Tue, 30 Jun 2026 00:00:00 UT</pubDate>
+    <guid>https://minoki.github.io/posts/2026-06-30-haskell-inline-asm.html</guid>
+    <dc:creator>Arata Mizuki</dc:creator>
+</item>
+<item>
     <title>An Unofficial Guide to What's New in GHC 9.14</title>
     <link>https://minoki.github.io/posts/2025-08-31-whats-new-in-ghc-9-14.html</link>
     <description><![CDATA[<p>I’ve been writing posts in Japanese over the past few years introducing new features in GHC.
