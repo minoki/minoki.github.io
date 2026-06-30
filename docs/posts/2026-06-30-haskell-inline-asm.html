@@ -229,15 +229,15 @@
 </ul>
 <p>For the register usage, see <a href="https://gitlab.haskell.org/ghc/ghc/-/blob/master/rts/include/stg/MachRegs/x86.h">rts/include/stg/MachRegs/x86.h</a>.</p>
 <p>The actual assembly code looks like this:</p>
-<pre><code>	.globl _wideningMul_prim
+<pre><code>    .globl _wideningMul_prim
 _wideningMul_prim:
-	## first argument: %rbx
-	## second argument: %r14
-	movq %rbx, %rax
-	mulq %r14 ## compute the product of %rax and %r14, putting the high half in %rdx and the low half in %rax
-	movq %rax, %rbx ## put the first return value (lo) in %rbx
-	movq %rdx, %r14 ## put the second return value (hi) in %r14
-	jmp *(%rbp)</code></pre>
+    ## first argument: %rbx
+    ## second argument: %r14
+    movq %rbx, %rax
+    mulq %r14 ## compute the product of %rax and %r14, putting the high half in %rdx and the low half in %rax
+    movq %rax, %rbx ## put the first return value (lo) in %rbx
+    movq %rdx, %r14 ## put the second return value (hi) in %r14
+    jmp *(%rbp)</code></pre>
 <p>In GHC’s internal calling convention, functions (and continuations) are always tail-called, so registers — except those reserved for the STG machine — are free to use.</p>
 <p>By the way, if you really want to write it in C, there’s apparently a method: “write it as a function with a specific prototype, compile it with Clang, and edit the LLVM IR output by <code>-S -emit-llvm</code> to change the calling convention to ghccc<a href="#fn4" class="footnote-ref" id="fnref4" role="doc-noteref"><sup>4</sup></a>.” See the links below for details.</p>
 <p>A collection of links that may be helpful:</p>
@@ -314,25 +314,25 @@ SYMBOL(wideningMul_prim):
 #endif
     .globl SYMBOL(wideningMul_thunk)
 SYMBOL(wideningMul_thunk):
-	## GHC:
-	##   first argument: %rbx
-	##   second argument: %r14
-	## C:
-	##   first argument: %rdi
-	##   second argument: %rsi
-	movq %rbx, %rdi
-	movq %r14, %rsi
-	subq $8, %rsp
-	callq SYMBOL(wideningMul_uint128)
-	addq $8, %rsp
-	## C:
-	##   first return value: %rax
-	##   second return value: %rdx
-	## GHC:
-	##   first return value: %rbx
-	##   second return value: %r14
-	movq %rax, %rbx
-	movq %rdx, %r14
+    ## GHC:
+    ##   first argument: %rbx
+    ##   second argument: %r14
+    ## C:
+    ##   first argument: %rdi
+    ##   second argument: %rsi
+    movq %rbx, %rdi
+    movq %r14, %rsi
+    subq $8, %rsp
+    callq SYMBOL(wideningMul_uint128)
+    addq $8, %rsp
+    ## C:
+    ##   first return value: %rax
+    ##   second return value: %rdx
+    ## GHC:
+    ##   first return value: %rbx
+    ##   second return value: %r14
+    movq %rax, %rbx
+    movq %rdx, %r14
 #if defined(TABLES_NEXT_TO_CODE)
     jmp *(%rbp)
 #else

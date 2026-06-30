@@ -302,15 +302,15 @@ For the register usage, see [rts/include/stg/MachRegs/x86.h](https://gitlab.hask
 The actual assembly code looks like this:
 
 ```
-	.globl _wideningMul_prim
+    .globl _wideningMul_prim
 _wideningMul_prim:
-	## first argument: %rbx
-	## second argument: %r14
-	movq %rbx, %rax
-	mulq %r14 ## compute the product of %rax and %r14, putting the high half in %rdx and the low half in %rax
-	movq %rax, %rbx ## put the first return value (lo) in %rbx
-	movq %rdx, %r14 ## put the second return value (hi) in %r14
-	jmp *(%rbp)
+    ## first argument: %rbx
+    ## second argument: %r14
+    movq %rbx, %rax
+    mulq %r14 ## compute the product of %rax and %r14, putting the high half in %rdx and the low half in %rax
+    movq %rax, %rbx ## put the first return value (lo) in %rbx
+    movq %rdx, %r14 ## put the second return value (hi) in %r14
+    jmp *(%rbp)
 ```
 
 In GHC's internal calling convention, functions (and continuations) are always tail-called, so registers — except those reserved for the STG machine — are free to use.
@@ -414,25 +414,25 @@ The thunk written in assembly looks like this:
 #endif
     .globl SYMBOL(wideningMul_thunk)
 SYMBOL(wideningMul_thunk):
-	## GHC:
-	##   first argument: %rbx
-	##   second argument: %r14
-	## C:
-	##   first argument: %rdi
-	##   second argument: %rsi
-	movq %rbx, %rdi
-	movq %r14, %rsi
-	subq $8, %rsp
-	callq SYMBOL(wideningMul_uint128)
-	addq $8, %rsp
-	## C:
-	##   first return value: %rax
-	##   second return value: %rdx
-	## GHC:
-	##   first return value: %rbx
-	##   second return value: %r14
-	movq %rax, %rbx
-	movq %rdx, %r14
+    ## GHC:
+    ##   first argument: %rbx
+    ##   second argument: %r14
+    ## C:
+    ##   first argument: %rdi
+    ##   second argument: %rsi
+    movq %rbx, %rdi
+    movq %r14, %rsi
+    subq $8, %rsp
+    callq SYMBOL(wideningMul_uint128)
+    addq $8, %rsp
+    ## C:
+    ##   first return value: %rax
+    ##   second return value: %rdx
+    ## GHC:
+    ##   first return value: %rbx
+    ##   second return value: %r14
+    movq %rax, %rbx
+    movq %rdx, %r14
 #if defined(TABLES_NEXT_TO_CODE)
     jmp *(%rbp)
 #else
